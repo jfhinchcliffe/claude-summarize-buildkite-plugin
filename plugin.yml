@@ -1,0 +1,42 @@
+name: Claude Code
+description: AI-powered build analysis and error diagnosis using Claude
+author: https://github.com/mcncl
+requirements:
+  - bash
+  - curl
+configuration:
+  properties:
+    api_key:
+      type: string
+      description: Anthropic API key for Claude access
+    model:
+      type: string
+      description: Claude model to use
+      default: claude-3-5-sonnet-20241022
+    trigger:
+      type: string
+      description: When to trigger Claude analysis
+      enum: ["on-failure", "always", "manual"]
+      default: on-failure
+    max_log_lines:
+      type: integer
+      description: Maximum number of log lines to analyze
+      default: 1000
+    custom_prompt:
+      type: string
+      description: Custom prompt to append to the analysis request
+    timeout:
+      type: integer
+      description: Timeout in seconds for API requests
+      default: 60
+    annotate:
+      type: boolean
+      description: Whether to create build annotations with findings
+      default: true
+    suggest_fixes:
+      type: boolean
+      description: Whether to suggest potential fixes
+      default: true
+  required:
+    - api_key
+  additionalProperties: false
