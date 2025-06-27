@@ -187,6 +187,7 @@ function call_claude_api() {
   local timeout="${4:-60}"
   
   local response_file="/tmp/claude_response_${BUILDKITE_BUILD_ID}.json"
+  local debug_file="/tmp/claude_debug_${BUILDKITE_BUILD_ID}.txt"
   
   echo "--- :robot_face: Analyzing with Claude"
   
@@ -195,6 +196,12 @@ function call_claude_api() {
     echo "Using existing response file for testing"
     return 0
   fi
+  
+  # Debug information
+  echo "DEBUG: API Key length: ${#api_key}" > "${debug_file}"
+  echo "DEBUG: Model: ${model}" >> "${debug_file}"
+  echo "DEBUG: Timeout: ${timeout}" >> "${debug_file}"
+  echo "DEBUG: Response file: ${response_file}" >> "${debug_file}"
   
   # Prepare the API request
   local json_payload
@@ -212,32 +219,51 @@ function call_claude_api() {
       ]
     }')
   
-  # Make API call
+  # Save payload for debugging
+  echo "DEBUG: JSON Payload (first 500 chars): ${json_payload:0:500}..." >> "${debug_file}"
+  
+  # Make API call with verbose output
   local http_code
-  echo "Executing curl command to Anthropic API..." >&2
-  http_code=$(curl -s -w "%{http_code}" \
+  echo "Executing curl command to Anthropic API with verbose logging..." >&2
+  http_code=$(curl -v -s -w "%{http_code}" \
     --max-time "${timeout}" \
     -H "Content-Type: application/json" \
     -H "x-api-key: ${api_key}" \
     -H "anthropic-version: 2023-06-01" \
     -d "${json_payload}" \
     "https://api.anthropic.com/v1/messages" \
-    -o "${response_file}" 2>/tmp/curl_error.log)
+    -o "${response_file}" 2>> "${debug_file}")
   curl_status=$?
+  
+  echo "DEBUG: Curl exit status: ${curl_status}" >> "${debug_file}"
+  echo "DEBUG: HTTP response code: ${http_code:-unknown}" >> "${debug_file}"
+  
   if [ $curl_status -ne 0 ]; then
     echo "Curl failed with status: $curl_status" >&2
-    echo "Curl error: $(cat /tmp/curl_error.log)" >&2
+    echo "See debug file for details: ${debug_file}" >&2
+    cat "${debug_file}" >&2
+  fi
+  
+  # Check for response file content
+  if [ -f "${response_file}" ]; then
+    echo "DEBUG: Response file exists, size: $(wc -c < "${response_file}") bytes" >> "${debug_file}"
+    echo "DEBUG: Response content: $(cat "${response_file}")" >> "${debug_file}"
+  else
+    echo "DEBUG: Response file does not exist or is empty" >> "${debug_file}"
   fi
   
   if [ -n "${http_code}" ] && [ "${http_code}" -eq 200 ]; then
+    echo "DEBUG: API call successful with HTTP 200" >> "${debug_file}"
     echo "${response_file}"
     return 0
   else
-    echo "Error: Claude API returned HTTP ${http_code:-unknown}"
+    echo "Error: Claude API returned HTTP ${http_code:-unknown}" | tee -a "${debug_file}" >&2
     if [ -f "${response_file}" ]; then
-      echo "Response: $(cat "${response_file}")"
-      echo "Full request payload: ${json_payload}"
+      echo "Response: $(cat "${response_file}")" | tee -a "${debug_file}" >&2
     fi
+    echo "*** DEBUG INFORMATION ***" >&2
+    cat "${debug_file}" >&2
+    echo "*************************" >&2
     return 1
   fi
 }
