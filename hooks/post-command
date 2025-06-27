@@ -101,9 +101,7 @@ if [ -z "${API_KEY}" ]; then
   exit 1
 fi
 
-# Debug the environment variables
-echo "Environment variables starting with BUILDKITE_PLUGIN_CLAUDE_CODE:" >&2
-env | grep BUILDKITE_PLUGIN_CLAUDE_CODE || echo "No matching variables found" >&2
+# Plugin configuration is loaded
 MODEL=$(plugin_read_config MODEL "claude-3-5-sonnet-20241022")
 TRIGGER=$(plugin_read_config TRIGGER "on-failure")
 MAX_LOG_LINES=$(plugin_read_config MAX_LOG_LINES "1000")
@@ -145,11 +143,8 @@ if should_trigger_analysis "${TRIGGER}" "${COMMAND_EXIT_STATUS}"; then
   
   # Perform analysis (disable exit on error temporarily)
   set +e
-  echo "Starting analysis with API key length: ${#API_KEY}" >&2
   ANALYSIS=$(analyze_build_failure "${API_KEY}" "${MODEL}" "${MAX_LOG_LINES}" "${CUSTOM_PROMPT}" "${TIMEOUT}")
   ANALYSIS_EXIT_CODE=$?
-  echo "Analysis exit code: ${ANALYSIS_EXIT_CODE}" >&2
-  echo "Analysis result length: ${#ANALYSIS}" >&2
   set -e
   
   if [ ${ANALYSIS_EXIT_CODE} -eq 0 ]; then
@@ -206,14 +201,11 @@ ANNOTATION
     
       fi
   
-  # Always output analysis to build log if we have results
+  # Check if analysis was successful
   if [ -n "${ANALYSIS}" ] && [ "${ANALYSIS}" != "Error: Response file not found or inaccessible" ] && [ "${ANALYSIS}" != "Error: Could not parse Claude response. See logs for details." ]; then
-    echo "--- :brain: Claude Analysis Results"
-    echo "${ANALYSIS}"
-  
+    echo "--- :brain: Claude Analysis Complete (See Annotation)"
   else
     echo "--- :warning: Claude analysis failed"
-    echo "Analysis error: ${ANALYSIS}" >&2
     if [ "${ANNOTATE}" = "true" ]; then
       # Create a temp file for the error annotation
       error_file="/tmp/claude_error_${BUILDKITE_BUILD_ID}.md"

@@ -197,12 +197,10 @@ function call_claude_api() {
     return 0
   fi
   
-  # Debug information
-  echo "DEBUG: API Key length: ${#api_key}" > "${debug_file}"
-  echo "DEBUG: API Key first/last chars: ${api_key:0:4}...${api_key: -4}" >> "${debug_file}"
-  echo "DEBUG: Model: ${model}" >> "${debug_file}"
-  echo "DEBUG: Timeout: ${timeout}" >> "${debug_file}"
-  echo "DEBUG: Response file: ${response_file}" >> "${debug_file}"
+  # Initialize debug file
+  echo "Claude API Debug Log" > "${debug_file}"
+  echo "Timestamp: $(date)" >> "${debug_file}"
+  echo "Model: ${model}" >> "${debug_file}"
   
   # Prepare the API request
   local json_payload
@@ -220,10 +218,10 @@ function call_claude_api() {
       ]
     }')
   
-  # Make API call with verbose output
+  # Make API call silently but log any errors
   local http_code
-  echo "Executing curl command to Anthropic API with verbose logging..." >&2
-  http_code=$(curl -v -s -w "%{http_code}" \
+  echo "Calling Claude API..." >&2
+  http_code=$(curl -s -w "%{http_code}" \
     --max-time "${timeout}" \
     -H "Content-Type: application/json" \
     -H "x-api-key: ${api_key}" \
@@ -233,8 +231,8 @@ function call_claude_api() {
     -o "${response_file}" 2>> "${debug_file}")
   curl_status=$?
   
-  echo "DEBUG: Curl exit status: ${curl_status}" >> "${debug_file}"
-  echo "DEBUG: HTTP response code: ${http_code:-unknown}" >> "${debug_file}"
+  # Log basic information about the API call
+  echo "HTTP Status: ${http_code:-unknown}" >> "${debug_file}"
   
   if [ $curl_status -ne 0 ]; then
     echo "Curl failed with status: $curl_status" >&2
@@ -242,26 +240,19 @@ function call_claude_api() {
     cat "${debug_file}" >&2
   fi
   
-  # Check for response file content
-  if [ -f "${response_file}" ]; then
-    echo "DEBUG: Response file exists, size: $(wc -c < "${response_file}") bytes" >> "${debug_file}"
-    echo "DEBUG: Response content: $(cat "${response_file}")" >> "${debug_file}"
-  else
-    echo "DEBUG: Response file does not exist or is empty" >> "${debug_file}"
+  # Check if response file exists
+  if [ ! -f "${response_file}" ]; then
+    echo "Error: Response file not created" >> "${debug_file}"
   fi
   
   if [ -n "${http_code}" ] && [ "${http_code}" -eq 200 ]; then
-    echo "DEBUG: API call successful with HTTP 200" >> "${debug_file}"
     echo "${response_file}"
     return 0
   else
-    echo "Error: Claude API returned HTTP ${http_code:-unknown}" | tee -a "${debug_file}" >&2
-    if [ -f "${response_file}" ]; then
-      echo "Response: $(cat "${response_file}")" | tee -a "${debug_file}" >&2
+    echo "Error: Claude API returned HTTP ${http_code:-unknown}" >&2
+    if [ -f "${response_file}" ] && [ -s "${response_file}" ]; then
+      echo "API Error Response: $(cat "${response_file}" | grep -o '"message":"[^"]*"' | cut -d '"' -f 4)" >&2
     fi
-    echo "*** DEBUG INFORMATION ***" >&2
-    cat "${debug_file}" >&2
-    echo "*************************" >&2
     return 1
   fi
 }
@@ -271,10 +262,7 @@ function extract_claude_response() {
   local response_file="$1"
   
   if [ -f "${response_file}" ]; then
-    # Debug response file contents
-    echo "DEBUG: Extracting content from response file: ${response_file}" >&2
-    echo "DEBUG: Response file content:" >&2
-    cat "${response_file}" >&2
+    # Extract content from response file
     
     # Extract the content with better error handling for multiple API formats
     local content
@@ -327,21 +315,16 @@ function create_annotation() {
   if [ -f "${content}" ]; then
     # Use the provided file
     annotation_file="${content}"
-    echo "Using existing annotation file: ${annotation_file}" >&2
   else
     # Create a temporary file with the content
     annotation_file="/tmp/claude_annotation_${BUILDKITE_BUILD_ID}.md"
     echo "${content}" > "${annotation_file}"
-    echo "Created annotation file: ${annotation_file}" >&2
   fi
   
   # Create annotation by cat-ing the file to buildkite-agent annotate
-  echo "Annotating with style: ${style}" >&2
   cat "${annotation_file}" | buildkite-agent annotate \
     --style "${style}" \
     --context "claude-analysis-${BUILDKITE_BUILD_ID}"
-  
-  echo "Annotation created successfully" >&2
 }
 
 # Analyze build failure
@@ -404,27 +387,20 @@ ${custom_prompt}"
   fi
   
   # Test network connectivity first
-  echo "Testing network connectivity..." >&2
   if ! curl -s --max-time 10 -o /dev/null https://api.anthropic.com; then
     echo "Network connectivity test failed - cannot reach api.anthropic.com" >&2
-    ping -c 1 api.anthropic.com >&2 || echo "Cannot ping api.anthropic.com" >&2
-    echo "Network not available or blocked" >&2
     return 1
-  else
-    echo "Network connectivity test successful" >&2
   fi
 
   # Call Claude API
   local response_file
-  echo "Attempting to call Claude API with model: ${model}" >&2
   if response_file=$(call_claude_api "${api_key}" "${model}" "${full_prompt}" "${timeout}"); then
-    echo "API call succeeded, response file: ${response_file}" >&2
     local analysis
     analysis=$(extract_claude_response "${response_file}")
     echo "${analysis}"
     return 0
   else
-    echo "Claude analysis failed with return code: $?" >&2
+    echo "Claude analysis failed" >&2
     return 1
   fi
 }
