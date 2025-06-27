@@ -6,6 +6,7 @@ steps:
             - tests
       - https://github.com/mcncl/claude-code-buildkite-plugin:
           api_key: $(buildkite-agent secret get "ANTHROPIC_API_KEY")
+          trigger: always
 
   - label: ":sparkles: Lint"
     plugins:
