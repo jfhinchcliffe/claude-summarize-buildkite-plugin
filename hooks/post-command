@@ -91,6 +91,8 @@ DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 
 # Read plugin configuration
 API_KEY=$(plugin_read_config API_KEY "")
+# Trim any whitespace that might be causing issues
+API_KEY=$(echo "$API_KEY" | tr -d '[:space:]')
 MODEL=$(plugin_read_config MODEL "claude-3-5-sonnet-20241022")
 TRIGGER=$(plugin_read_config TRIGGER "on-failure")
 MAX_LOG_LINES=$(plugin_read_config MAX_LOG_LINES "1000")

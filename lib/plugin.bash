@@ -199,6 +199,7 @@ function call_claude_api() {
   
   # Debug information
   echo "DEBUG: API Key length: ${#api_key}" > "${debug_file}"
+  echo "DEBUG: API Key first/last chars: ${api_key:0:4}...${api_key: -4}" >> "${debug_file}"
   echo "DEBUG: Model: ${model}" >> "${debug_file}"
   echo "DEBUG: Timeout: ${timeout}" >> "${debug_file}"
   echo "DEBUG: Response file: ${response_file}" >> "${debug_file}"
