@@ -323,6 +323,17 @@ ${custom_prompt}"
     return 0
   fi
   
+  # Test network connectivity first
+  echo "Testing network connectivity..." >&2
+  if ! curl -s --max-time 10 -o /dev/null https://api.anthropic.com; then
+    echo "Network connectivity test failed - cannot reach api.anthropic.com" >&2
+    ping -c 1 api.anthropic.com >&2 || echo "Cannot ping api.anthropic.com" >&2
+    echo "Network not available or blocked" >&2
+    return 1
+  else
+    echo "Network connectivity test successful" >&2
+  fi
+
   # Call Claude API
   local response_file
   echo "Attempting to call Claude API with model: ${model}" >&2
