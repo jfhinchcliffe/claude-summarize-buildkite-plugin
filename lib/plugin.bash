@@ -220,9 +220,6 @@ function call_claude_api() {
       ]
     }')
   
-  # Save payload for debugging
-  echo "DEBUG: JSON Payload (first 500 chars): ${json_payload:0:500}..." >> "${debug_file}"
-  
   # Make API call with verbose output
   local http_code
   echo "Executing curl command to Anthropic API with verbose logging..." >&2

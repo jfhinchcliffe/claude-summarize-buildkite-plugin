@@ -7,8 +7,11 @@ steps:
       - plugin-tester#v1.1.1:
           folders:
             - tests
+      - secrets#v1.0.0:
+          variables:
+            CLAUDE_TOKEN: ANTHROPIC_API_KEY 
       - https://github.com/mcncl/claude-code-buildkite-plugin:
-          api_key: $$(buildkite-agent secret get ANTHROPIC_API_KEY)
+          api_key: $$CLAUDE_TOKEN
           trigger: always
 
   - label: ":sparkles: Lint"
