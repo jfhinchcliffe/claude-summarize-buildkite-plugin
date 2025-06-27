@@ -319,13 +319,29 @@ function create_annotation() {
   local title="$1"
   local content="$2"
   local style="${3:-info}"
+  local annotation_file
   
   echo "--- :memo: Creating annotation"
   
-  # Create annotation using buildkite-agent
-  echo "${content}" | buildkite-agent annotate \
+  # Check if content is a file path
+  if [ -f "${content}" ]; then
+    # Use the provided file
+    annotation_file="${content}"
+    echo "Using existing annotation file: ${annotation_file}" >&2
+  else
+    # Create a temporary file with the content
+    annotation_file="/tmp/claude_annotation_${BUILDKITE_BUILD_ID}.md"
+    echo "${content}" > "${annotation_file}"
+    echo "Created annotation file: ${annotation_file}" >&2
+  fi
+  
+  # Create annotation by cat-ing the file to buildkite-agent annotate
+  echo "Annotating with style: ${style}" >&2
+  cat "${annotation_file}" | buildkite-agent annotate \
     --style "${style}" \
     --context "claude-analysis-${BUILDKITE_BUILD_ID}"
+  
+  echo "Annotation created successfully" >&2
 }
 
 # Analyze build failure
