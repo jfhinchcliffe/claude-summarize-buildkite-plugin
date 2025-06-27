@@ -189,7 +189,7 @@ function call_claude_api() {
   local response_file="/tmp/claude_response_${BUILDKITE_BUILD_ID}.json"
   local debug_file="/tmp/claude_debug_${BUILDKITE_BUILD_ID}.txt"
   
-  echo "--- :robot_face: Analyzing with Claude"
+  echo "--- :robot_face: Analyzing with Claude" >&2
   
   # For tests, if the response file already exists, use it directly
   if [ -f "${response_file}" ]; then
