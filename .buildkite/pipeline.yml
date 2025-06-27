@@ -1,5 +1,5 @@
 env:
-  BUILDKITE_PLUGINS_ALWAYS_CLONE_FRESH=true
+  BUILDKITE_PLUGINS_ALWAYS_CLONE_FRESH: true
 
 steps:
   - label: ":shell: Tests"
