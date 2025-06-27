@@ -271,9 +271,28 @@ function extract_claude_response() {
   local response_file="$1"
   
   if [ -f "${response_file}" ]; then
-    jq -r '.content[0].text // "No response content found"' "${response_file}"
+    # Debug response file contents
+    echo "DEBUG: Extracting content from response file: ${response_file}" >&2
+    echo "DEBUG: Response file content:" >&2
+    cat "${response_file}" >&2
+    
+    # Extract the content with better error handling
+    local content
+    content=$(jq -r '.content[0].text // empty' "${response_file}" 2>/dev/null)
+    
+    if [ -n "${content}" ]; then
+      echo "${content}"
+    else
+      # Try alternate response format
+      content=$(jq -r '.completion // empty' "${response_file}" 2>/dev/null)
+      if [ -n "${content}" ]; then
+        echo "${content}"
+      else
+        echo "Error: Could not parse Claude response. See logs for details."
+      fi
+    fi
   else
-    echo "Response file not found"
+    echo "Error: Response file not found or inaccessible"
   fi
 }
 

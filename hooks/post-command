@@ -145,8 +145,11 @@ if should_trigger_analysis "${TRIGGER}" "${COMMAND_EXIT_STATUS}"; then
   
   # Perform analysis (disable exit on error temporarily)
   set +e
+  echo "Starting analysis with API key length: ${#API_KEY}" >&2
   ANALYSIS=$(analyze_build_failure "${API_KEY}" "${MODEL}" "${MAX_LOG_LINES}" "${CUSTOM_PROMPT}" "${TIMEOUT}")
   ANALYSIS_EXIT_CODE=$?
+  echo "Analysis exit code: ${ANALYSIS_EXIT_CODE}" >&2
+  echo "Analysis result length: ${#ANALYSIS}" >&2
   set -e
   
   if [ ${ANALYSIS_EXIT_CODE} -eq 0 ]; then
@@ -177,14 +180,15 @@ ${ANALYSIS}
       fi
   
   # Always output analysis to build log if we have results
-  if [ -n "${ANALYSIS}" ]; then
+  if [ -n "${ANALYSIS}" ] && [ "${ANALYSIS}" != "Error: Response file not found or inaccessible" ] && [ "${ANALYSIS}" != "Error: Could not parse Claude response. See logs for details." ]; then
     echo "--- :brain: Claude Analysis Results"
     echo "${ANALYSIS}"
   
   else
     echo "--- :warning: Claude analysis failed"
+    echo "Analysis error: ${ANALYSIS}" >&2
     if [ "${ANNOTATE}" = "true" ]; then
-      create_annotation "Claude Analysis Failed" "Failed to analyze build with Claude. Check API key and connectivity." "warning"
+      create_annotation "Claude Analysis Failed" "Failed to analyze build with Claude. Error: ${ANALYSIS}\n\nCheck API key and connectivity." "warning"
     fi
   fi
 else
