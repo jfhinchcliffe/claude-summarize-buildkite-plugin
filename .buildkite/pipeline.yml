@@ -3,8 +3,7 @@ env:
 
 steps:
   - label: ":shell: Tests"
-    env:
-      BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY: $(buildkite-agent secret get ANTHROPIC_API_KEY)
+    # API key is now set by pre-command hook
     plugins:
       - plugin-tester#v1.1.1:
           folders:
