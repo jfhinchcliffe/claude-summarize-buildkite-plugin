@@ -14,29 +14,47 @@ AI-powered build analysis and error diagnosis using Claude. This plugin automati
 
 1. Get your Anthropic API key from [console.anthropic.com](https://console.anthropic.com)
 2. Add it to your Buildkite environment variables as `ANTHROPIC_API_KEY`
-3. Add the plugin to your pipeline:
+3. Add the plugin to your pipeline using one of these approaches:
 
 ```yaml
 steps:
+  # Option 1: Using environment variable
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
       - claude-code#v1.0.0:
           api_key: "${ANTHROPIC_API_KEY}"
+          
+  # Option 2: Using Buildkite secrets (recommended)
+  - label: "🧪 More tests"
+    command: "npm test"
+    plugins:
+      - claude-code#v1.0.0:
+          secret_name: "ANTHROPIC_API_KEY"
 ```
 
 ## Configuration Options
 
-### Required
+### Required (one of the following)
 
 #### `api_key` (string)
 
 Your Anthropic API key for accessing Claude. Store this securely in your Buildkite environment variables.
 
+#### `secret_name` (string)
+
+Name of a Buildkite secret containing your Anthropic API key. The plugin will automatically fetch the secret using `buildkite-agent secret get`.
+
 ```yaml
+# Option 1: Using environment variable
 plugins:
   - claude-code#v1.0.0:
       api_key: "${ANTHROPIC_API_KEY}"
+
+# Option 2: Using Buildkite secrets
+plugins:
+  - claude-code#v1.0.0:
+      secret_name: "ANTHROPIC_API_KEY"
 ```
 
 ### Optional

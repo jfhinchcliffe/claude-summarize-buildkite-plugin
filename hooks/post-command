@@ -94,6 +94,13 @@ API_KEY=$(plugin_read_config API_KEY "")
 # Trim any whitespace that might be causing issues
 API_KEY=$(echo "$API_KEY" | tr -d '[:space:]')
 
+# If API_KEY is still not set, this means it wasn't provided directly or via the environment hook
+# We'll log an error but continue to allow the build to proceed
+if [ -z "${API_KEY}" ]; then
+  echo "❌ Error: No API key available. Set either api_key or secret_name in your plugin configuration."
+  exit 1
+fi
+
 # Debug the environment variables
 echo "Environment variables starting with BUILDKITE_PLUGIN_CLAUDE_CODE:" >&2
 env | grep BUILDKITE_PLUGIN_CLAUDE_CODE || echo "No matching variables found" >&2

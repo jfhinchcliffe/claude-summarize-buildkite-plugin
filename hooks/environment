@@ -1,0 +1,32 @@
+#!/bin/bash
+set -euo pipefail
+
+# Load plugin bash library
+DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
+# shellcheck source=lib/plugin.bash
+. "$DIR/../lib/plugin.bash"
+
+# Get configuration
+API_KEY=$(plugin_read_config API_KEY "")
+SECRET_NAME=$(plugin_read_config SECRET_NAME "")
+
+# If API_KEY is not set directly but SECRET_NAME is provided, fetch it
+if [[ -z "$API_KEY" && -n "$SECRET_NAME" ]]; then
+  echo "--- 🔑 Fetching API key from secret: $SECRET_NAME"
+  
+  if command -v buildkite-agent >/dev/null 2>&1; then
+    API_KEY=$(buildkite-agent secret get "$SECRET_NAME")
+    if [[ -n "$API_KEY" ]]; then
+      # Export the API key for the plugin to use
+      export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY="$API_KEY"
+      echo "Successfully fetched API key from secret"
+    else
+      echo "⚠️ Warning: Failed to fetch API key from secret: $SECRET_NAME"
+    fi
+  else
+    echo "⚠️ Warning: buildkite-agent command not available, cannot fetch secret"
+  fi
+fi
+
+# Always return success so the build continues
+true

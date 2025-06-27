@@ -8,7 +8,7 @@ configuration:
   properties:
     api_key:
       type: string
-      description: Anthropic API key for Claude access
+      description: Anthropic API key for Claude access (or use secret_name instead)
     model:
       type: string
       description: Claude model to use
@@ -37,6 +37,10 @@ configuration:
       type: boolean
       description: Whether to suggest potential fixes
       default: true
-  required:
-    - api_key
+    secret_name:
+      type: string
+      description: Name of Buildkite secret containing the Anthropic API key (alternative to api_key)
+  oneOf:
+    - required: [api_key]
+    - required: [secret_name]
   additionalProperties: false
