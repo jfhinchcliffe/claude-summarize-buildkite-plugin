@@ -3,12 +3,13 @@ env:
 
 steps:
   - label: ":shell: Tests"
+    env:
+      BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
     plugins:
       - plugin-tester#v1.1.1:
           folders:
             - tests
       - https://github.com/mcncl/claude-code-buildkite-plugin:
-          api_key: $(buildkite-agent get secret ANTHROPIC_API_KEY)
           trigger: always
 
   - label: ":sparkles: Lint"
