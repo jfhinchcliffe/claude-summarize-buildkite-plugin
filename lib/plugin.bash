@@ -214,6 +214,7 @@ function call_claude_api() {
   
   # Make API call
   local http_code
+  echo "Executing curl command to Anthropic API..." >&2
   http_code=$(curl -s -w "%{http_code}" \
     --max-time "${timeout}" \
     -H "Content-Type: application/json" \
@@ -221,7 +222,12 @@ function call_claude_api() {
     -H "anthropic-version: 2023-06-01" \
     -d "${json_payload}" \
     "https://api.anthropic.com/v1/messages" \
-    -o "${response_file}")
+    -o "${response_file}" 2>/tmp/curl_error.log)
+  curl_status=$?
+  if [ $curl_status -ne 0 ]; then
+    echo "Curl failed with status: $curl_status" >&2
+    echo "Curl error: $(cat /tmp/curl_error.log)" >&2
+  fi
   
   if [ -n "${http_code}" ] && [ "${http_code}" -eq 200 ]; then
     echo "${response_file}"
@@ -319,13 +325,15 @@ ${custom_prompt}"
   
   # Call Claude API
   local response_file
+  echo "Attempting to call Claude API with model: ${model}" >&2
   if response_file=$(call_claude_api "${api_key}" "${model}" "${full_prompt}" "${timeout}"); then
+    echo "API call succeeded, response file: ${response_file}" >&2
     local analysis
     analysis=$(extract_claude_response "${response_file}")
     echo "${analysis}"
     return 0
   else
-    echo "Claude analysis failed"
+    echo "Claude analysis failed with return code: $?" >&2
     return 1
   fi
 }
