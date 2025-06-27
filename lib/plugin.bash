@@ -276,20 +276,38 @@ function extract_claude_response() {
     echo "DEBUG: Response file content:" >&2
     cat "${response_file}" >&2
     
-    # Extract the content with better error handling
+    # Extract the content with better error handling for multiple API formats
     local content
-    content=$(jq -r '.content[0].text // empty' "${response_file}" 2>/dev/null)
+    
+    # Try different JSON paths based on different Claude API response formats
+    content=$(jq -r '.content[0].text // empty' "${response_file}" 2>/dev/null)    # Current format
+    
+    if [ -z "${content}" ]; then
+      content=$(jq -r '.completion // empty' "${response_file}" 2>/dev/null)  # Legacy format
+    fi
+    
+    if [ -z "${content}" ]; then
+      content=$(jq -r '.content // empty' "${response_file}" 2>/dev/null)  # Alternative format
+    fi
+    
+    if [ -z "${content}" ]; then
+      # Most recent Claude API format
+      content=$(jq -r '.content[0].text // .content // empty' "${response_file}" 2>/dev/null)
+    fi
+    
+    # Newest API response format, matches what we're seeing
+    if [ -z "${content}" ]; then
+      content=$(jq -r '.role // empty' "${response_file}" 2>/dev/null)
+      if [ "${content}" = "assistant" ]; then
+        # Extract everything after the model name in the raw response
+        content=$(grep -oP '"model":"[^"]+"\K(.*)' "${response_file}" | sed 's/^,//g' | sed 's/}].*//g')
+      fi
+    fi
     
     if [ -n "${content}" ]; then
       echo "${content}"
     else
-      # Try alternate response format
-      content=$(jq -r '.completion // empty' "${response_file}" 2>/dev/null)
-      if [ -n "${content}" ]; then
-        echo "${content}"
-      else
-        echo "Error: Could not parse Claude response. See logs for details."
-      fi
+      echo "Error: Could not parse Claude response. See logs for details."
     fi
   else
     echo "Error: Response file not found or inaccessible"
