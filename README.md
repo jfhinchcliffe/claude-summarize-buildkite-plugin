@@ -1,4 +1,4 @@
-# Claude Code Buildkite Plugin [![Build status](https://badge.buildkite.com/d673030645c7f3e7e397affddd97cfe9f93a40547ed17b6dc5.svg)](https://buildkite.com/buildkite/plugins-template)
+# Claude Code Buildkite Plugin [![Build status](https://badge.buildkite.com/741da64ce676981eccb96fd67290a2695da07921cdc111b03a.svg)](https://buildkite.com/no-assembly/claude-code-plugin)
 
 AI-powered build analysis and error diagnosis using Claude. This plugin automatically analyzes build failures, provides root cause analysis, and suggests actionable fixes through Buildkite annotations.
 

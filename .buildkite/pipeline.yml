@@ -4,11 +4,13 @@ steps:
       - plugin-tester#v1.1.1:
           folders:
             - tests
+      - https://github.com/mcncl/claude-code-buildkite-plugin:
+          api_key: "$ANTHROPIC_API_KEY"
 
   - label: ":sparkles: Lint"
     plugins:
       - plugin-linter#v3.3.0:
-          id: template
+          id: claude-code
 
   - label: ":shell: Shellcheck"
     plugins:
