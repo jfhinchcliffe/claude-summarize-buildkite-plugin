@@ -168,8 +168,9 @@ if should_trigger_analysis "${TRIGGER}" "${COMMAND_EXIT_STATUS}"; then
         annotation_title="Claude Step Analysis"
       fi
       
-      # Format the analysis for annotation
-      formatted_analysis="## ${annotation_title}
+      # Format the analysis for annotation using heredoc
+      read -r -d '' formatted_analysis << EOF
+## ${annotation_title}
 
 <div class="grid grid-cols-1 gap-4">
 
@@ -192,6 +193,7 @@ ${ANALYSIS}
   <em>Analysis by Claude AI | Generated at $(date)</em>
 </div>
 </div>
+EOF
       
       create_annotation "${annotation_title}" "${formatted_analysis}" "${annotation_style}"
     fi
@@ -207,8 +209,9 @@ ${ANALYSIS}
     echo "--- :warning: Claude analysis failed"
     echo "Analysis error: ${ANALYSIS}" >&2
     if [ "${ANNOTATE}" = "true" ]; then
-      # Format the error annotation
-      local error_annotation="## Claude Analysis Failed
+      # Format the error annotation using a heredoc to avoid syntax errors
+      read -r -d '' error_annotation << EOF
+## Claude Analysis Failed
 
 <div class="grid grid-cols-1 gap-4">
 
@@ -232,7 +235,8 @@ ${ANALYSIS}
 <div class="bg-gray p-3 rounded-md text-xs text-gray-dark">
   <em>Generated at $(date)</em>
 </div>
-</div>"
+</div>
+EOF
       create_annotation "Claude Analysis Failed" "${error_annotation}" "warning"
     fi
   fi
