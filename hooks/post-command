@@ -163,7 +163,9 @@ if should_trigger_analysis "${TRIGGER}" "${COMMAND_EXIT_STATUS}"; then
       # Change style based on build status
       if [ "${COMMAND_EXIT_STATUS}" -ne 0 ]; then
         annotation_style="error"
-        annotation_title="Claude Build Failure Analysis"
+        annotation_title="Claude Step Failure Analysis"
+      else
+        annotation_title="Claude Step Analysis"
       fi
       
       # Format the analysis for annotation

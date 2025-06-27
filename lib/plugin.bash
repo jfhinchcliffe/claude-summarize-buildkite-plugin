@@ -334,21 +334,24 @@ Build URL: ${BUILDKITE_BUILD_URL:-Unknown}"
   logs=$(< "${log_file}")
   
   # Construct prompt
-  local base_prompt="You are an expert software engineer and DevOps specialist. Please analyze this Buildkite build failure and provide insights.
+  local base_prompt="You are an expert software engineer and DevOps specialist. Please analyze this Buildkite step output and provide insights.
 
-Build Information:
+Step Information:
 ${build_info}
+Step: ${BUILDKITE_LABEL:-Unknown}
+Command: ${BUILDKITE_COMMAND:-Unknown}
+Exit Status: ${BUILDKITE_COMMAND_EXIT_STATUS:-Unknown}
 
-Build Logs (last ${max_log_lines} lines):
+Step Logs (last ${max_log_lines} lines):
 \`\`\`
 ${logs}
 \`\`\`
 
 Please provide:
-1. **Root Cause Analysis**: What likely caused this build to fail?
-2. **Error Summary**: Key errors and their significance
-3. **Suggested Fixes**: Specific actionable steps to resolve the issue
-4. **Prevention**: How to prevent similar failures in the future
+1. **Analysis**: What happened in this step? $([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "Why did it fail?" || echo "Any notable issues or warnings?")
+2. **Key Points**: Important information and their significance
+3. **Recommendations**: $([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "Specific actionable steps to resolve the issue" || echo "Suggested improvements or optimizations")
+4. **Best Practices**: How to improve this step for the future
 
 Focus on being practical and actionable. If you see common patterns (dependency issues, test failures, configuration problems, etc.), highlight them clearly."
   
