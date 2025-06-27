@@ -230,6 +230,7 @@ function call_claude_api() {
     echo "Error: Claude API returned HTTP ${http_code:-unknown}"
     if [ -f "${response_file}" ]; then
       echo "Response: $(cat "${response_file}")"
+      echo "Full request payload: ${json_payload}"
     fi
     return 1
   fi
