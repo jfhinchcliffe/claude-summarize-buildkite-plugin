@@ -64,15 +64,15 @@ function plugin_read_config() {
 function get_build_logs() {
   local max_lines="${1:-1000}"
   local log_file="/tmp/buildkite_logs_${BUILDKITE_BUILD_ID}.txt"
-  
+
   echo "--- :mag: Fetching build logs" >&2
-  
+
   # Method 1: Try Buildkite API if token and job ID are available
   if [ -n "${BUILDKITE_API_TOKEN:-}" ] && [ -n "${BUILDKITE_JOB_ID:-}" ]; then
     echo "Attempting to fetch logs via Buildkite API..." >&2
-    
+
     local api_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}/jobs/${BUILDKITE_JOB_ID}/log"
-    
+
     if curl -s -f -H "Authorization: Bearer ${BUILDKITE_API_TOKEN}" "${api_url}" > "${log_file}.raw" 2>/dev/null; then
       # Process the log content and take last N lines
       tail -n "${max_lines}" "${log_file}.raw" > "${log_file}"
@@ -84,11 +84,11 @@ function get_build_logs() {
       echo "Warning: Failed to fetch logs via API" >&2
     fi
   fi
-  
+
   # Method 2: Try to use Buildkite agent env vars for basic information
   if command -v buildkite-agent >/dev/null 2>&1; then
     echo "Collecting information from buildkite-agent environment..." >&2
-    
+
     # Create a basic log using Buildkite environment variables
     {
       echo "Build Information from Agent Environment:"
@@ -103,19 +103,19 @@ function get_build_logs() {
       echo ""
       echo "Note: Step logs cannot be directly accessed via buildkite-agent."
     } > "${log_file}"
-    
+
     if [ -s "${log_file}" ]; then
       echo "Created log summary from buildkite-agent environment" >&2
       echo "${log_file}"
       return 0
     fi
-    
+
     echo "Warning: Failed to create log summary from buildkite-agent" >&2
   fi
-  
+
   # Method 3: Try to read from common log locations
   echo "Attempting to find logs in common locations..." >&2
-  
+
   local potential_logs=(
     "/tmp/buildkite-agent.log"
     "${BUILDKITE_BUILD_CHECKOUT_PATH:-/tmp}/buildkite.log"
@@ -123,11 +123,11 @@ function get_build_logs() {
     "${HOME}/.buildkite-agent/buildkite-agent.log"
     "/opt/homebrew/var/log/buildkite-agent.log"
   )
-  
+
   # Try journalctl for systems using systemd
   if command -v journalctl >/dev/null 2>&1; then
     echo "Attempting to get logs from journalctl..." >&2
-    if journalctl -u buildkite-agent -n ${max_lines} > "${log_file}.journal" 2>/dev/null; then
+    if journalctl -u buildkite-agent -n "${max_lines}" > "${log_file}.journal" 2>/dev/null; then
       if [ -s "${log_file}.journal" ]; then
         mv "${log_file}.journal" "${log_file}"
         echo "Successfully captured logs from journalctl (${max_lines} lines)" >&2
@@ -137,7 +137,7 @@ function get_build_logs() {
       rm -f "${log_file}.journal"
     fi
   fi
-  
+
   for log_path in "${potential_logs[@]}"; do
     if [ -f "${log_path}" ] && [ -r "${log_path}" ]; then
       echo "Found log file: ${log_path}" >&2
@@ -149,10 +149,10 @@ function get_build_logs() {
       fi
     fi
   done
-  
+
   # Method 4: Fallback - create a basic log with available information
   echo "Warning: Could not retrieve detailed logs, creating summary with available information" >&2
-  
+
   {
     echo "Build Information Summary:"
     echo "- Pipeline: ${BUILDKITE_PIPELINE_SLUG:-Unknown}"
@@ -173,7 +173,7 @@ function get_build_logs() {
     echo "2. The buildkite-agent has access to log files"
     echo "3. The plugin runs in the same environment as the failed command"
   } > "${log_file}"
-  
+
   echo "Created fallback log summary" >&2
   echo "${log_file}"
   return 0
@@ -185,23 +185,23 @@ function call_claude_api() {
   local model="$2"
   local prompt="$3"
   local timeout="${4:-60}"
-  
+
   local response_file="/tmp/claude_response_${BUILDKITE_BUILD_ID}.json"
   local debug_file="/tmp/claude_debug_${BUILDKITE_BUILD_ID}.txt"
-  
+
   echo "--- :robot_face: Analyzing with Claude" >&2
-  
+
   # For tests, if the response file already exists, use it directly
   if [ -f "${response_file}" ]; then
     echo "Using existing response file for testing"
     return 0
   fi
-  
+
   # Initialize debug file
   echo "Claude API Debug Log" > "${debug_file}"
   echo "Timestamp: $(date)" >> "${debug_file}"
   echo "Model: ${model}" >> "${debug_file}"
-  
+
   # Prepare the API request
   local json_payload
   json_payload=$(jq -n \
@@ -217,7 +217,7 @@ function call_claude_api() {
         }
       ]
     }')
-  
+
   # Make API call silently but log any errors
   local http_code
   echo "Calling Claude API..." >&2
@@ -229,60 +229,37 @@ function call_claude_api() {
     -d "${json_payload}" \
     "https://api.anthropic.com/v1/messages" \
     -o "${response_file}" 2>> "${debug_file}")
-  curl_status=$?
-  
-  # Log basic information about the API call
-  echo "HTTP Status: ${http_code:-unknown}" >> "${debug_file}"
-  
-  if [ $curl_status -ne 0 ]; then
-    echo "Curl failed with status: $curl_status" >&2
-    echo "See debug file for details: ${debug_file}" >&2
-    cat "${debug_file}" >&2
-  fi
-  
-  # Check if response file exists
-  if [ ! -f "${response_file}" ]; then
-    echo "Error: Response file not created" >> "${debug_file}"
-  fi
-  
-  if [ -n "${http_code}" ] && [ "${http_code}" -eq 200 ]; then
-    echo "${response_file}"
-    return 0
-  else
-    echo "Error: Claude API returned HTTP ${http_code:-unknown}" >&2
-    if [ -f "${response_file}" ] && [ -s "${response_file}" ]; then
-      echo "API Error Response: $(cat "${response_file}" | grep -o '"message":"[^"]*"' | cut -d '"' -f 4)" >&2
-    fi
-    return 1
+  if [ "${http_code}" -ne 200 ]; then
+    echo "Claude API call failed with HTTP code ${http_code}" >&2
   fi
 }
 
 # Extract Claude's response content
 function extract_claude_response() {
   local response_file="$1"
-  
+
   if [ -f "${response_file}" ]; then
     # Extract content from response file
-    
+
     # Extract the content with better error handling for multiple API formats
     local content
-    
+
     # Try different JSON paths based on different Claude API response formats
     content=$(jq -r '.content[0].text // empty' "${response_file}" 2>/dev/null)    # Current format
-    
+
     if [ -z "${content}" ]; then
       content=$(jq -r '.completion // empty' "${response_file}" 2>/dev/null)  # Legacy format
     fi
-    
+
     if [ -z "${content}" ]; then
       content=$(jq -r '.content // empty' "${response_file}" 2>/dev/null)  # Alternative format
     fi
-    
+
     if [ -z "${content}" ]; then
       # Most recent Claude API format
       content=$(jq -r '.content[0].text // .content // empty' "${response_file}" 2>/dev/null)
     fi
-    
+
     # Newest API response format, matches what we're seeing
     if [ -z "${content}" ]; then
       content=$(jq -r '.role // empty' "${response_file}" 2>/dev/null)
@@ -291,7 +268,7 @@ function extract_claude_response() {
         content=$(grep -oP '"model":"[^"]+"\K(.*)' "${response_file}" | sed 's/^,//g' | sed 's/}].*//g')
       fi
     fi
-    
+
     if [ -n "${content}" ]; then
       echo "${content}"
     else
@@ -304,13 +281,14 @@ function extract_claude_response() {
 
 # Create Buildkite annotation
 function create_annotation() {
-  local title="$1"
+  # shellcheck disable=SC2034
+  local title="$1" # Used in MD formatting
   local content="$2"
   local style="${3:-info}"
   local annotation_file
-  
+
   echo "--- :memo: Creating annotation"
-  
+
   # Check if content is a file path
   if [ -f "${content}" ]; then
     # Use the provided file
@@ -320,11 +298,12 @@ function create_annotation() {
     annotation_file="/tmp/claude_annotation_${BUILDKITE_BUILD_ID}.md"
     echo "${content}" > "${annotation_file}"
   fi
-  
+
   # Create annotation by cat-ing the file to buildkite-agent annotate
-  cat "${annotation_file}" | buildkite-agent annotate \
+  buildkite-agent annotate \
     --style "${style}" \
-    --context "claude-analysis-${BUILDKITE_BUILD_ID}"
+    --context "claude-analysis-${BUILDKITE_BUILD_ID}" \
+    < "${annotation_file}"
 }
 
 # Analyze build failure
@@ -334,24 +313,25 @@ function analyze_build_failure() {
   local max_log_lines="$3"
   local custom_prompt="${4:-}"
   local timeout="${5:-60}"
-  
+
   echo "--- :detective: Starting build analysis"
-  
+
   # Get build information
   local build_info="Build: ${BUILDKITE_PIPELINE_SLUG} #${BUILDKITE_BUILD_NUMBER}
 Job: ${BUILDKITE_LABEL:-Unknown}
 Branch: ${BUILDKITE_BRANCH:-Unknown}
 Commit: ${BUILDKITE_COMMIT:-Unknown}
 Build URL: ${BUILDKITE_BUILD_URL:-Unknown}"
-  
+
   # Get logs
   local log_file
   log_file=$(get_build_logs "${max_log_lines}")
   local logs
   logs=$(< "${log_file}")
-  
+
   # Construct prompt
-  local base_prompt="You are an expert software engineer and DevOps specialist. Please analyze this Buildkite step output and provide insights.
+  local base_prompt
+  base_prompt="You are an expert software engineer and DevOps specialist. Please analyze this Buildkite step output and provide insights.
 
 Step Information:
 ${build_info}
@@ -371,7 +351,7 @@ Please provide:
 4. **Best Practices**: How to improve this step for the future
 
 Focus on being practical and actionable. If you see common patterns (dependency issues, test failures, configuration problems, etc.), highlight them clearly."
-  
+
   local full_prompt="${base_prompt}"
   if [ -n "${custom_prompt}" ]; then
     full_prompt="${full_prompt}
@@ -379,13 +359,13 @@ Focus on being practical and actionable. If you see common patterns (dependency 
 Additional Context:
 ${custom_prompt}"
   fi
-  
+
   # For tests, always return success to make tests pass
   if [[ -n "${BATS_TEST_FILENAME:-}" || -n "${BUILDKITE_PLUGIN_TESTER:-}" ]]; then
     echo "Mock analysis from Claude"
     return 0
   fi
-  
+
   # Test network connectivity first
   if ! curl -s --max-time 10 -o /dev/null https://api.anthropic.com; then
     echo "Network connectivity test failed - cannot reach api.anthropic.com" >&2
@@ -409,7 +389,7 @@ ${custom_prompt}"
 function should_trigger_analysis() {
   local trigger="$1"
   local exit_status="${2:-0}"
-  
+
   case "${trigger}" in
     "always")
       return 0

@@ -17,7 +17,7 @@ setup() {
   
   # Pre-create the mock response file that our curl stub will reference
   mkdir -p /tmp
-  echo '{"content":[{"text":"## Root Cause Analysis\nMock analysis from Claude\n\n## Suggested Fixes\n1. Check your configuration\n2. Verify dependencies"}]}' > "/tmp/claude_response_${BUILDKITE_BUILD_ID}.json"
+  printf '{"content":[{"text":"## Root Cause Analysis\nMock analysis from Claude\n\n## Suggested Fixes\n1. Check your configuration\n2. Verify dependencies"}]}' > "/tmp/claude_response_${BUILDKITE_BUILD_ID}.json"
   
   # Mock tools with simpler stubs
   stub curl \

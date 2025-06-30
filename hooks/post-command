@@ -108,7 +108,6 @@ MAX_LOG_LINES=$(plugin_read_config MAX_LOG_LINES "1000")
 CUSTOM_PROMPT=$(plugin_read_config CUSTOM_PROMPT "")
 TIMEOUT=$(plugin_read_config TIMEOUT "60")
 ANNOTATE=$(plugin_read_config ANNOTATE "true")
-SUGGEST_FIXES=$(plugin_read_config SUGGEST_FIXES "true")
 
 # Validate required configuration
 if [ -z "${API_KEY}" ]; then
