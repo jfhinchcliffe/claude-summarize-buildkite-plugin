@@ -10,6 +10,12 @@ AI-powered build analysis and error diagnosis using Claude. This plugin automati
 - 🔧 **Actionable Insights**: Provides specific steps to resolve issues and prevent future failures
 - 🎯 **Context-Aware**: Understands build context including branch, commit, and job information
 
+## Requirements
+
+- **curl**: For API requests
+- **jq**: For JSON processing
+- **Anthropic API Key**: From [console.anthropic.com](https://console.anthropic.com)
+
 ## Quick Start
 
 1. Get your Anthropic API key from [console.anthropic.com](https://console.anthropic.com)
@@ -22,14 +28,14 @@ steps:
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
-      - claude-code#v1.0.0:
+      - mcncl/claude-code#v1.0.0:
           api_key: "${ANTHROPIC_API_KEY}"
           
   # Option 2: Using Buildkite secrets (recommended)
   - label: "🧪 More tests"
     command: "npm test"
     plugins:
-      - claude-code#v1.0.0:
+      - mcncl/claude-code#v1.0.0:
           secret_name: "ANTHROPIC_API_KEY"
 ```
 
@@ -48,12 +54,12 @@ Name of a Buildkite secret containing your Anthropic API key. The plugin will au
 ```yaml
 # Option 1: Using environment variable
 plugins:
-  - claude-code#v1.0.0:
+  - mcncl/claude-code#v1.0.0:
       api_key: "${ANTHROPIC_API_KEY}"
 
 # Option 2: Using Buildkite secrets
 plugins:
-  - claude-code#v1.0.0:
+  - mcncl/claude-code#v1.0.0:
       secret_name: "ANTHROPIC_API_KEY"
 ```
 
@@ -65,7 +71,7 @@ Claude model to use for analysis. Default: `claude-3-5-sonnet-20241022`
 
 ```yaml
 plugins:
-  - claude-code#v1.0.0:
+  - mcncl/claude-code#v1.0.0:
       api_key: "${ANTHROPIC_API_KEY}"
       model: "claude-3-5-sonnet-20241022"
 ```
@@ -80,7 +86,7 @@ When to trigger Claude analysis. Options: `on-failure`, `always`, `manual`. Defa
 
 ```yaml
 plugins:
-  - claude-code#v1.0.0:
+  - mcncl/claude-code#v1.0.0:
       api_key: "${ANTHROPIC_API_KEY}"
       trigger: "always"
 ```
@@ -91,7 +97,7 @@ Maximum number of log lines to send to Claude for analysis. Default: `1000`
 
 ```yaml
 plugins:
-  - claude-code#v1.0.0:
+  - mcncl/claude-code#v1.0.0:
       api_key: "${ANTHROPIC_API_KEY}"
       max_log_lines: 500
 ```
@@ -102,7 +108,7 @@ Additional context or instructions to include in the analysis prompt.
 
 ```yaml
 plugins:
-  - claude-code#v1.0.0:
+  - mcncl/claude-code#v1.0.0:
       api_key: "${ANTHROPIC_API_KEY}"
       custom_prompt: "This is a Node.js project using Jest for testing. Pay special attention to dependency issues."
 ```
@@ -113,7 +119,7 @@ Timeout in seconds for Claude API requests. Default: `60`
 
 ```yaml
 plugins:
-  - claude-code#v1.0.0:
+  - mcncl/claude-code#v1.0.0:
       api_key: "${ANTHROPIC_API_KEY}"
       timeout: 120
 ```
@@ -124,20 +130,9 @@ Whether to create Buildkite annotations with the analysis results. Default: `tru
 
 ```yaml
 plugins:
-  - claude-code#v1.0.0:
+  - mcncl/claude-code#v1.0.0:
       api_key: "${ANTHROPIC_API_KEY}"
       annotate: false  # Only output to build logs
-```
-
-#### `suggest_fixes` (boolean)
-
-Whether to include fix suggestions in the analysis. Default: `true`
-
-```yaml
-plugins:
-  - claude-code#v1.0.0:
-      api_key: "${ANTHROPIC_API_KEY}"
-      suggest_fixes: false  # Only provide analysis, no fix suggestions
 ```
 
 ## Examples
@@ -149,7 +144,7 @@ steps:
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
-      - claude-code#v1.0.0:
+      - mcncl/claude-code#v1.0.0:
           api_key: "${ANTHROPIC_API_KEY}"
 ```
 
@@ -166,7 +161,7 @@ steps:
   - label: "🏗️ Build application"
     command: "npm run build"
     plugins:
-      - claude-code#v1.0.0:
+      - mcncl/claude-code#v1.0.0:
           api_key: "${ANTHROPIC_API_KEY}"
           trigger: "always"
           custom_prompt: "Focus on build performance and optimization opportunities"
@@ -181,7 +176,7 @@ steps:
     env:
       CLAUDE_ANALYZE: "true"  # Trigger manual analysis
     plugins:
-      - claude-code#v1.0.0:
+      - mcncl/claude-code#v1.0.0:
           api_key: "${ANTHROPIC_API_KEY}"
           trigger: "manual"
           custom_prompt: "This is a deployment script. Focus on infrastructure and configuration issues."
@@ -195,32 +190,25 @@ steps:
   - label: "🔍 Lint code"
     command: "npm run lint"
     plugins:
-      - claude-code#v1.0.0:
+      - mcncl/claude-code#v1.0.0:
           api_key: "${ANTHROPIC_API_KEY}"
           custom_prompt: "Focus on code quality and style issues"
 
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
-      - claude-code#v1.0.0:
+      - mcncl/claude-code#v1.0.0:
           api_key: "${ANTHROPIC_API_KEY}"
           custom_prompt: "Focus on test failures and coverage issues"
 
   - label: "🏗️ Build production"
     command: "npm run build:prod"
     plugins:
-      - claude-code#v1.0.0:
+      - mcncl/claude-code#v1.0.0:
           api_key: "${ANTHROPIC_API_KEY}"
           trigger: "always"
           custom_prompt: "Focus on build optimization and bundle analysis"
 ```
-
-## Requirements
-
-- **Buildkite Agent**: Any recent version
-- **curl**: For API requests
-- **jq**: For JSON processing
-- **Anthropic API Key**: From [console.anthropic.com](https://console.anthropic.com)
 
 ## Compatibility
 
