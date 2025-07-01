@@ -137,6 +137,7 @@ echo "Model: ${MODEL}"
 echo "Trigger: ${TRIGGER}"
 echo "Analysis Level: ${ANALYSIS_LEVEL}"
 echo "Max log lines: ${MAX_LOG_LINES}"
+[ "${COMPARE_BUILDS}" = "true" ] && echo "Build Comparison: ENABLED (last ${COMPARISON_RANGE} builds)" || echo "Build Comparison: disabled"
 
 # Get the command exit status from Buildkite
 COMMAND_EXIT_STATUS="${BUILDKITE_COMMAND_EXIT_STATUS:-0}"

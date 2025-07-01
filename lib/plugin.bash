@@ -460,7 +460,7 @@ function get_build_history() {
   local current_build_number="${BUILDKITE_BUILD_NUMBER}"
   local current_step_key="${BUILDKITE_STEP_KEY:-}"
   
-  echo "--- :clock1: Fetching build history for comparison (level: ${analysis_level})" >&2
+  echo "--- :chart_with_upwards_trend: Fetching historical data for ${comparison_range} builds (level: ${analysis_level})" >&2
   
   if [ -z "${api_token}" ]; then
     echo "Warning: No API token available for build history comparison" >&2
@@ -698,6 +698,7 @@ Build URL: ${BUILDKITE_BUILD_URL:-Unknown}"
   # Calculate current build time if available
   local current_build_time=""
   local build_time_analysis=""
+  local current_time_note=""
   
   # For step-level analysis, try to get step-specific timing
   if [ "${analysis_level}" = "step" ] && [ -n "${BUILDKITE_JOB_STARTED_AT:-}" ] && [ -n "${BUILDKITE_JOB_FINISHED_AT:-}" ]; then
@@ -712,7 +713,7 @@ Build URL: ${BUILDKITE_BUILD_URL:-Unknown}"
 Step Duration: ${current_build_time}s"
       fi
     fi
-  # Otherwise, use build-level timing
+  # Check if build is completed for build-level timing
   elif [ -n "${BUILDKITE_BUILD_STARTED_AT:-}" ] && [ -n "${BUILDKITE_BUILD_FINISHED_AT:-}" ]; then
     if command -v date >/dev/null 2>&1; then
       local start_epoch finish_epoch
@@ -723,6 +724,20 @@ Step Duration: ${current_build_time}s"
         current_build_time=$((finish_epoch - start_epoch))
         build_info="${build_info}
 Build Duration: ${current_build_time}s"
+      fi
+    fi
+  # Handle running builds by calculating elapsed time so far
+  elif [ "${analysis_level}" = "build" ] && [ -n "${BUILDKITE_BUILD_STARTED_AT:-}" ]; then
+    if command -v date >/dev/null 2>&1; then
+      local start_epoch now_epoch
+      start_epoch=$(date -d "${BUILDKITE_BUILD_STARTED_AT}" +%s 2>/dev/null || echo "")
+      now_epoch=$(date +%s)
+      
+      if [ -n "${start_epoch}" ]; then
+        current_build_time=$((now_epoch - start_epoch))
+        build_info="${build_info}
+Build Duration (so far): ${current_build_time}s"
+        current_time_note="Note: Build is still running - comparing partial time to historical complete builds"
       fi
     fi
   fi
@@ -773,6 +788,13 @@ ${agent_context}"
     base_prompt="${base_prompt}
 
 ${build_time_analysis}"
+    
+    # Add timing note if build is still running
+    if [ -n "${current_time_note}" ]; then
+      base_prompt="${base_prompt}
+
+${current_time_note}"
+    fi
   fi
 
   # Build appropriate information section based on analysis level
