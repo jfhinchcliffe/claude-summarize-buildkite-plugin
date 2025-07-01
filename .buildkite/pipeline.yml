@@ -18,9 +18,12 @@ steps:
       - plugin-linter#v3.3.0:
           id: mcncl/claude-code
 
+  - wait: ~
+
   - label: "👀 Test it out..."
     command: sleep 5
     plugins:
       - https://github.com/mcncl/claude-code-buildkite-plugin#main:
           secret_name: "ANTHROPIC_API_KEY"
           trigger: always
+          analysis_level: build
