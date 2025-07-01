@@ -700,44 +700,98 @@ Build URL: ${BUILDKITE_BUILD_URL:-Unknown}"
   local build_time_analysis=""
   local current_time_note=""
   
-  # For step-level analysis, try to get step-specific timing
-  if [ "${analysis_level}" = "step" ] && [ -n "${BUILDKITE_JOB_STARTED_AT:-}" ] && [ -n "${BUILDKITE_JOB_FINISHED_AT:-}" ]; then
-    if command -v date >/dev/null 2>&1; then
-      local start_epoch finish_epoch
-      start_epoch=$(date -d "${BUILDKITE_JOB_STARTED_AT}" +%s 2>/dev/null || echo "")
-      finish_epoch=$(date -d "${BUILDKITE_JOB_FINISHED_AT}" +%s 2>/dev/null || echo "")
+  # Get timing information via API if token is available
+  local api_token
+  api_token=$(get_buildkite_api_token)
+  
+  if [ -n "${api_token}" ]; then
+    # For step-level analysis, try to get step timing from API
+    if [ "${analysis_level}" = "step" ] && [ -n "${BUILDKITE_JOB_ID:-}" ]; then
+      echo "Fetching step timing data via API..." >&2
+      local job_details_file="/tmp/job_${BUILDKITE_JOB_ID}_timing.json"
+      local job_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}/jobs/${BUILDKITE_JOB_ID}"
       
-      if [ -n "${start_epoch}" ] && [ -n "${finish_epoch}" ]; then
-        current_build_time=$((finish_epoch - start_epoch))
-        build_info="${build_info}
+      if curl -s -f -H "Authorization: Bearer ${api_token}" "${job_url}" > "${job_details_file}" 2>/dev/null; then
+        if command -v jq >/dev/null 2>&1; then
+          # Calculate step time from API response
+          local started_at finished_at
+          started_at=$(jq -r '.started_at // empty' "${job_details_file}" 2>/dev/null)
+          finished_at=$(jq -r '.finished_at // empty' "${job_details_file}" 2>/dev/null)
+          
+          if [ -n "${started_at}" ] && [ -n "${finished_at}" ] && [ "${finished_at}" != "null" ]; then
+            # Calculate time difference
+            if command -v date >/dev/null 2>&1; then
+              local start_epoch finish_epoch
+              start_epoch=$(date -d "${started_at}" +%s 2>/dev/null || echo "")
+              finish_epoch=$(date -d "${finished_at}" +%s 2>/dev/null || echo "")
+              
+              if [ -n "${start_epoch}" ] && [ -n "${finish_epoch}" ]; then
+                current_build_time=$((finish_epoch - start_epoch))
+                build_info="${build_info}
 Step Duration: ${current_build_time}s"
+              fi
+            fi
+          elif [ -n "${started_at}" ] && ([ -z "${finished_at}" ] || [ "${finished_at}" = "null" ]); then
+            # Step still running, calculate time so far
+            if command -v date >/dev/null 2>&1; then
+              local start_epoch now_epoch
+              start_epoch=$(date -d "${started_at}" +%s 2>/dev/null || echo "")
+              now_epoch=$(date +%s)
+              
+              if [ -n "${start_epoch}" ]; then
+                current_build_time=$((now_epoch - start_epoch))
+                build_info="${build_info}
+Step Duration (so far): ${current_build_time}s"
+                current_time_note="Note: Step is still running - comparing partial time to historical complete steps"
+              fi
+            fi
+          fi
+        fi
+        rm -f "${job_details_file}"
       fi
-    fi
-  # Check if build is completed for build-level timing
-  elif [ -n "${BUILDKITE_BUILD_STARTED_AT:-}" ] && [ -n "${BUILDKITE_BUILD_FINISHED_AT:-}" ]; then
-    if command -v date >/dev/null 2>&1; then
-      local start_epoch finish_epoch
-      start_epoch=$(date -d "${BUILDKITE_BUILD_STARTED_AT}" +%s 2>/dev/null || echo "")
-      finish_epoch=$(date -d "${BUILDKITE_BUILD_FINISHED_AT}" +%s 2>/dev/null || echo "")
+    # For build-level analysis, get build timing from API
+    elif [ "${analysis_level}" = "build" ]; then
+      echo "Fetching build timing data via API..." >&2
+      local build_details_file="/tmp/build_${BUILDKITE_BUILD_NUMBER}_timing.json"
+      local build_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}"
       
-      if [ -n "${start_epoch}" ] && [ -n "${finish_epoch}" ]; then
-        current_build_time=$((finish_epoch - start_epoch))
-        build_info="${build_info}
+      if curl -s -f -H "Authorization: Bearer ${api_token}" "${build_url}" > "${build_details_file}" 2>/dev/null; then
+        if command -v jq >/dev/null 2>&1; then
+          # Calculate build time from API response
+          local started_at finished_at
+          started_at=$(jq -r '.started_at // empty' "${build_details_file}" 2>/dev/null)
+          finished_at=$(jq -r '.finished_at // empty' "${build_details_file}" 2>/dev/null)
+          
+          if [ -n "${started_at}" ] && [ -n "${finished_at}" ] && [ "${finished_at}" != "null" ]; then
+            # Calculate time difference for completed build
+            if command -v date >/dev/null 2>&1; then
+              local start_epoch finish_epoch
+              start_epoch=$(date -d "${started_at}" +%s 2>/dev/null || echo "")
+              finish_epoch=$(date -d "${finished_at}" +%s 2>/dev/null || echo "")
+              
+              if [ -n "${start_epoch}" ] && [ -n "${finish_epoch}" ]; then
+                current_build_time=$((finish_epoch - start_epoch))
+                build_info="${build_info}
 Build Duration: ${current_build_time}s"
-      fi
-    fi
-  # Handle running builds by calculating elapsed time so far
-  elif [ "${analysis_level}" = "build" ] && [ -n "${BUILDKITE_BUILD_STARTED_AT:-}" ]; then
-    if command -v date >/dev/null 2>&1; then
-      local start_epoch now_epoch
-      start_epoch=$(date -d "${BUILDKITE_BUILD_STARTED_AT}" +%s 2>/dev/null || echo "")
-      now_epoch=$(date +%s)
-      
-      if [ -n "${start_epoch}" ]; then
-        current_build_time=$((now_epoch - start_epoch))
-        build_info="${build_info}
+              fi
+            fi
+          elif [ -n "${started_at}" ] && ([ -z "${finished_at}" ] || [ "${finished_at}" = "null" ]); then
+            # Build still running, calculate time so far
+            if command -v date >/dev/null 2>&1; then
+              local start_epoch now_epoch
+              start_epoch=$(date -d "${started_at}" +%s 2>/dev/null || echo "")
+              now_epoch=$(date +%s)
+              
+              if [ -n "${start_epoch}" ]; then
+                current_build_time=$((now_epoch - start_epoch))
+                build_info="${build_info}
 Build Duration (so far): ${current_build_time}s"
-        current_time_note="Note: Build is still running - comparing partial time to historical complete builds"
+                current_time_note="Note: Build is still running - comparing partial time to historical complete builds"
+              fi
+            fi
+          fi
+        fi
+        rm -f "${build_details_file}"
       fi
     fi
   fi
