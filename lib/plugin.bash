@@ -6,7 +6,8 @@ PLUGIN_PREFIX="CLAUDE_CODE"
 # Get the Buildkite API token from environment or plugin config
 function get_buildkite_api_token() {
   # First check if a token was provided via plugin config
-  local config_token=$(plugin_read_config BUILDKITE_API_TOKEN "")
+  local config_token=""
+  config_token=$(plugin_read_config BUILDKITE_API_TOKEN "")
   
   # If not found in config, check environment variable
   if [ -z "${config_token}" ]; then
@@ -75,13 +76,14 @@ function plugin_read_config() {
 
 # Get build logs from Buildkite API or fallback methods
 function get_build_logs() {
+  local api_token=""
   local max_lines="${1:-1000}"
   local log_file="/tmp/buildkite_logs_${BUILDKITE_BUILD_ID}.txt"
 
   echo "--- :mag: Fetching build logs" >&2
 
   # Method 1: Try Buildkite API if token and job ID are available
-  local api_token=$(get_buildkite_api_token)
+  api_token=$(get_buildkite_api_token)
   if [ -n "${api_token}" ] && [ -n "${BUILDKITE_JOB_ID:-}" ]; then
     echo "Attempting to fetch logs via Buildkite API..." >&2
 
@@ -363,8 +365,7 @@ function get_agent_context() {
   
   # Check if file exists and is readable
   if [ -f "${agent_file_path}" ] && [ -r "${agent_file_path}" ]; then
-    echo "Agent Context from ${agent_file_path}:"
-    echo "$(cat "${agent_file_path}")"
+    echo "Using ${agent_file_path}:"
     echo ""
   else
     echo "Warning: Agent file '${agent_file_path}' not found or not readable" >&2
