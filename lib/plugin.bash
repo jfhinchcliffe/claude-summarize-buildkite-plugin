@@ -298,11 +298,9 @@ function extract_claude_response() {
       content=$(jq -r '.content[0].text // .content // empty' "${response_file}" 2>/dev/null)
     fi
 
-    # Newest API response format, matches what we're seeing
     if [ -z "${content}" ]; then
       content=$(jq -r '.role // empty' "${response_file}" 2>/dev/null)
       if [ "${content}" = "assistant" ]; then
-        # Extract everything after the model name in the raw response
         content=$(grep -oP '"model":"[^"]+"\K(.*)' "${response_file}" | sed 's/^,//g' | sed 's/}].*//g')
       fi
     fi
@@ -320,7 +318,7 @@ function extract_claude_response() {
 # Create Buildkite annotation
 function create_annotation() {
   # shellcheck disable=SC2034
-  local title="$1" # Used in MD formatting
+  local title="$1"
   local content="$2"
   local style="${3:-info}"
   local annotation_file
