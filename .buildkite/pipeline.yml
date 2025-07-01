@@ -11,6 +11,7 @@ steps:
     plugins:
       - docker-compose#v5.10.0:
           run: tests
+          config: compose.yaml
 
   - label: ":book: Lint"
     plugins:
