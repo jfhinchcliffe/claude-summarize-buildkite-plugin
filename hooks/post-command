@@ -187,21 +187,40 @@ if should_trigger_analysis "${TRIGGER}" "${COMMAND_EXIT_STATUS}"; then
 
 <div class="grid grid-cols-1 gap-4">
 
-### $([ "${ANALYSIS_LEVEL}" = "build" ] && echo "Build" || echo "Step") Information
 <div class="bg-gray p-4 rounded-md mb-4">
-  <p><strong>Pipeline:</strong> ${BUILDKITE_PIPELINE_SLUG:-Unknown}</p>
-  <p><strong>Build:</strong> #${BUILDKITE_BUILD_NUMBER:-Unknown}</p>
-  <p><strong>Analysis Level:</strong> ${ANALYSIS_LEVEL}</p>
-  $([ "${ANALYSIS_LEVEL}" = "step" ] && echo "  <p><strong>Step:</strong> ${BUILDKITE_LABEL:-Unknown}</p>")
-  $([ "${ANALYSIS_LEVEL}" = "step" ] && echo "  <p><strong>Command:</strong> <code>${BUILDKITE_COMMAND:-Unknown}</code></p>")
-  <p><strong>Branch:</strong> ${BUILDKITE_BRANCH:-Unknown}</p>
-  <p><strong>Exit Status:</strong> <span class="$([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "term-fgBrightRed" || echo "term-fgBrightGreen")">${BUILDKITE_COMMAND_EXIT_STATUS:-0}</span></p>
+  <div style="display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <h3 style="margin: 0;">$([ "${ANALYSIS_LEVEL}" = "build" ] && echo "🏗️ Build" || echo "🔍 Step") Summary</h3>
+      <p style="margin: 0;"><strong>Pipeline:</strong> ${BUILDKITE_PIPELINE_SLUG:-Unknown}</p>
+      <p style="margin: 0;"><strong>Build:</strong> <a href="${BUILDKITE_BUILD_URL:-#}">#${BUILDKITE_BUILD_NUMBER:-Unknown}</a></p>
+    </div>
+    <div>
+      <span class="$([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "term-fgBrightRed" || echo "term-fgBrightGreen")" style="font-size: 1.5em; font-weight: bold; padding: 0.5em;">
+        $([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "❌" || echo "✅")
+        ${BUILDKITE_COMMAND_EXIT_STATUS:-0}
+      </span>
+    </div>
+  </div>
 </div>
 
-### Analysis
-<div class="p-4 rounded-md mb-4">
+<details open>
+  <summary style="cursor: pointer; font-weight: bold; padding: 0.5em; background-color: #f0f0f0; border-radius: 4px;">📋 $([ "${ANALYSIS_LEVEL}" = "build" ] && echo "Build" || echo "Step") Details</summary>
+  <div class="p-3 border-l-4 border-blue">
+    $([ "${ANALYSIS_LEVEL}" = "step" ] && echo "<p><strong>Step:</strong> ${BUILDKITE_LABEL:-Unknown}</p>")
+    $([ "${ANALYSIS_LEVEL}" = "step" ] && echo "<p><strong>Command:</strong> <code>${BUILDKITE_COMMAND:-Unknown}</code></p>")
+    <p><strong>Analysis Level:</strong> ${ANALYSIS_LEVEL}</p>
+    <p><strong>Branch:</strong> ${BUILDKITE_BRANCH:-Unknown}</p>
+    <p><strong>Commit:</strong> <code>${BUILDKITE_COMMIT:-Unknown}</code></p>
+    $([ "${COMPARE_BUILDS}" = "true" ] && echo "<p><strong>Comparison:</strong> Using data from last ${COMPARISON_RANGE} builds</p>")
+  </div>
+</details>
+
+<details open>
+  <summary style="cursor: pointer; font-weight: bold; padding: 0.5em; background-color: #f0f0f0; border-radius: 4px;">🤖 Claude Analysis</summary>
+  <div class="p-4 rounded-md mb-4">
 ${ANALYSIS}
-</div>
+  </div>
+</details>
 
 <div class="bg-gray p-3 rounded-md text-xs text-gray-dark">
   <em>Analysis by Claude AI | Generated at $(date)</em>
@@ -230,22 +249,42 @@ ANNOTATION
 
 <div class="grid grid-cols-1 gap-4">
 
-<div class="bg-red-light p-4 rounded-md mb-4">
-  <p><strong>Error:</strong> <span class="term-fgBrightRed">${ANALYSIS}</span></p>
-  <p><strong>Possible Causes:</strong></p>
-  <ul>
-    <li>Invalid API key or authorization issue</li>
-    <li>Network connectivity problems</li>
-    <li>API rate limits or quota exceeded</li>
-    <li>Internal service error</li>
-  </ul>
-  <p><strong>Troubleshooting:</strong></p>
-  <ul>
-    <li>Verify your API key is correct and properly configured</li>
-    <li>Check network connectivity to api.anthropic.com</li>
-    <li>Ensure your Buildkite agent has internet access</li>
-  </ul>
+<div class="bg-red-light p-4 rounded-md mb-4" style="display: flex; align-items: center;">
+  <div style="font-size: 2.5em; margin-right: 0.5em;">⚠️</div>
+  <div>
+    <p style="font-weight: bold; margin: 0;">Analysis could not be completed</p>
+    <p style="margin: 0;"><span class="term-fgBrightRed">${ANALYSIS}</span></p>
+  </div>
 </div>
+
+<details open>
+  <summary style="cursor: pointer; font-weight: bold; padding: 0.5em; background-color: #f0f0f0; border-radius: 4px;">🔍 Troubleshooting Information</summary>
+  <div class="p-3 border-l-4 border-red">
+    <p><strong>Configuration:</strong></p>
+    <ul>
+      <li>Model: ${MODEL}</li>
+      <li>Trigger: ${TRIGGER}</li>
+      <li>Analysis Level: ${ANALYSIS_LEVEL}</li>
+      $([ "${COMPARE_BUILDS}" = "true" ] && echo "<li>Comparison: Using data from last ${COMPARISON_RANGE} builds</li>")
+    </ul>
+    
+    <p><strong>Possible Causes:</strong></p>
+    <ul>
+      <li>Invalid API key or authorization issue</li>
+      <li>Network connectivity problems</li>
+      <li>API rate limits or quota exceeded</li>
+      <li>Internal service error</li>
+    </ul>
+    
+    <p><strong>Troubleshooting Steps:</strong></p>
+    <ul>
+      <li>Verify your API key is correct and properly configured</li>
+      <li>Check network connectivity to api.anthropic.com</li>
+      <li>Ensure your Buildkite agent has internet access</li>
+      <li>Check Claude API status at <a href="https://status.anthropic.com/">status.anthropic.com</a></li>
+    </ul>
+  </div>
+</details>
 
 <div class="bg-gray p-3 rounded-md text-xs text-gray-dark">
   <em>Generated at $(date)</em>
