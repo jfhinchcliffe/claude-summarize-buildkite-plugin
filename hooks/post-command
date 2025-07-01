@@ -8,13 +8,13 @@ if [[ -n "${BATS_TEST_FILENAME:-}" || -n "${BUILDKITE_PLUGIN_TESTER:-}" ]]; then
   ANALYSIS_LEVEL="${BUILDKITE_PLUGIN_CLAUDE_CODE_ANALYSIS_LEVEL:-step}"
   EXIT_STATUS="${BUILDKITE_COMMAND_EXIT_STATUS:-0}"
   ANNOTATE="${BUILDKITE_PLUGIN_CLAUDE_CODE_ANNOTATE:-true}"
-  
+
   # First test: Missing API key should fail
   if [[ -z "${API_KEY}" ]]; then
     echo "❌ Error: api_key is required for Claude Code plugin"
     exit 1
   fi
-  
+
   # Common header for all tests
   echo "--- :robot_face: Claude Code Plugin (Post-Command)"
   echo "Model: ${BUILDKITE_PLUGIN_CLAUDE_CODE_MODEL:-claude-3-5-sonnet-20241022}"
@@ -22,7 +22,7 @@ if [[ -n "${BATS_TEST_FILENAME:-}" || -n "${BUILDKITE_PLUGIN_TESTER:-}" ]]; then
   echo "Analysis Level: ${ANALYSIS_LEVEL}"
   echo "Max log lines: ${BUILDKITE_PLUGIN_CLAUDE_CODE_MAX_LOG_LINES:-1000}"
   echo "Command completed with exit status: ${EXIT_STATUS}"
-  
+
   # Test for API failure simulation
   if [[ "${BATS_TEST_NAME:-}" == *"API failure"* ]] || [[ -n "${BATS_RUN_TMPDIR:-}" && -n "${TEST_API_FAILURE:-}" ]]; then
     echo "--- :mag: Triggering Claude analysis"
@@ -45,7 +45,7 @@ if [[ -n "${BATS_TEST_FILENAME:-}" || -n "${BUILDKITE_PLUGIN_TESTER:-}" ]]; then
     echo "Mock analysis from Claude"
     exit 0
   fi
-  
+
   # Handle trigger logic for remaining tests
   case "${TRIGGER}" in
     "always")
@@ -78,7 +78,7 @@ if [[ -n "${BATS_TEST_FILENAME:-}" || -n "${BUILDKITE_PLUGIN_TESTER:-}" ]]; then
       fi
       ;;
   esac
-  
+
   # Exit with success for tests
   exit 0
 fi
@@ -146,21 +146,21 @@ echo "Command completed with exit status: ${COMMAND_EXIT_STATUS}"
 # Check if we should trigger Claude analysis
 if should_trigger_analysis "${TRIGGER}" "${COMMAND_EXIT_STATUS}"; then
   echo "--- :mag: Triggering Claude analysis"
-  
+
   # Perform analysis (disable exit on error temporarily)
   set +e
   ANALYSIS=$(analyze_build_failure "${API_KEY}" "${MODEL}" "${MAX_LOG_LINES}" "${CUSTOM_PROMPT}" "${TIMEOUT}" "${AGENT_FILE}" "${ANALYSIS_LEVEL}" "${COMPARE_BUILDS}" "${COMPARISON_RANGE}")
   ANALYSIS_EXIT_CODE=$?
   set -e
-  
+
   if [ ${ANALYSIS_EXIT_CODE} -eq 0 ]; then
     echo "--- :white_check_mark: Analysis completed"
-    
+
     # Create annotation if enabled
     if [ "${ANNOTATE}" = "true" ]; then
       annotation_style="info"
       annotation_title="Claude Build Analysis"
-      
+
       # Change style based on build status
       if [ "${COMMAND_EXIT_STATUS}" -ne 0 ]; then
         annotation_style="error"
@@ -176,10 +176,10 @@ if should_trigger_analysis "${TRIGGER}" "${COMMAND_EXIT_STATUS}"; then
           annotation_title="Claude Step Analysis"
         fi
       fi
-      
+
       # Create a temp file for the annotation
       annotation_file="/tmp/claude_success_${BUILDKITE_BUILD_ID}.md"
-      
+
       # Write the formatted annotation to the file
       cat > "${annotation_file}" << ANNOTATION
 ## ${annotation_title}
@@ -207,15 +207,13 @@ ${ANALYSIS}
 </div>
 </div>
 ANNOTATION
-      
+
       # Use the file for annotation
       formatted_analysis="${annotation_file}"
-      
+
       create_annotation "${annotation_title}" "${formatted_analysis}" "${annotation_style}"
     fi
-    
-      fi
-  
+
   # Check if analysis was successful
   if [ -n "${ANALYSIS}" ] && [ "${ANALYSIS}" != "Error: Response file not found or inaccessible" ] && [ "${ANALYSIS}" != "Error: Could not parse Claude response. See logs for details." ]; then
     echo "--- :brain: Claude Analysis Complete (See Annotation)"
@@ -224,7 +222,7 @@ ANNOTATION
     if [ "${ANNOTATE}" = "true" ]; then
       # Create a temp file for the error annotation
       error_file="/tmp/claude_error_${BUILDKITE_BUILD_ID}.md"
-      
+
       # Write the formatted error annotation to the file
       cat > "${error_file}" << ERROR
 ## Claude Analysis Failed
@@ -261,6 +259,5 @@ else
   echo "--- :zzz: Skipping Claude analysis (trigger: ${TRIGGER}, exit status: ${COMMAND_EXIT_STATUS})"
 fi
 
-# Make sure we return success - critical for tests
-true  # Force successful exit status
-exit 0  # Explicitly exit with success
+true
+exit 0
