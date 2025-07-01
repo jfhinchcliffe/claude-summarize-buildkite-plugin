@@ -69,6 +69,13 @@ When to trigger Claude analysis. Options: `on-failure`, `always`, `manual`. Defa
 - `always`: Analyze every build (success or failure)
 - `manual`: Only when `CLAUDE_ANALYZE=true` environment variable is set or commit message contains `[claude-analyze]`
 
+#### `analysis_level` (string)
+
+Level at which to analyze logs. Options: `step`, `build`. Default: `step`
+
+- `step`: Analyze only the current step's logs
+- `build`: Analyze logs from all jobs in the entire build (requires `buildkite_api_token`)
+
 #### `max_log_lines` (integer)
 
 Maximum number of log lines to send to Claude for analysis. Default: `1000`
@@ -95,6 +102,14 @@ Include project context from an agent file in the analysis. Default: `false`
 
 The agent file should contain project-specific context like architecture details, common issues, coding standards, or troubleshooting guides that help Claude provide more relevant analysis.
 
+#### `compare_builds` (boolean)
+
+Enable build time comparison analysis. When enabled, Claude will analyze build time trends by comparing the current build duration against recent builds. Default: `false`
+
+#### `comparison_range` (integer)
+
+Number of previous builds to compare against for build time analysis. Only used when `compare_builds` is `true`. Default: `5`
+
 ## Examples
 
 ### Basic Usage - Analyze Failed Tests
@@ -113,6 +128,22 @@ When tests fail, Claude will analyze the output and create an annotation with:
 - Key error explanations
 - Suggested fixes
 - Prevention strategies
+
+### Build-Level Analysis
+
+```yaml
+steps:
+  - label: "🔍 Analyze entire build"
+    command: "npm test"
+    plugins:
+      - mcncl/claude-code#v1.0.0:
+          api_key: "${ANTHROPIC_API_KEY}"
+          buildkite_api_token: "${BUILDKITE_API_TOKEN}"
+          analysis_level: "build"
+          trigger: "always"
+```
+
+With `analysis_level: "build"`, Claude will analyze logs from all jobs in the build, providing insights across the entire pipeline.
 
 ### Always Analyze Builds
 
@@ -142,6 +173,26 @@ steps:
           custom_prompt: "This is a deployment script. Focus on infrastructure and configuration issues."
           max_log_lines: 2000
 ```
+
+### Build Time Analysis
+
+```yaml
+steps:
+  - label: "🏗️ Build with performance tracking"
+    command: "npm run build"
+    plugins:
+      - mcncl/claude-code#v1.0.0:
+          api_key: "${ANTHROPIC_API_KEY}"
+          compare_builds: true
+          comparison_range: 10
+          custom_prompt: "Focus on build performance trends and identify any performance regressions"
+```
+
+When `compare_builds` is enabled, Claude will:
+- Compare current build time against the last N builds (configurable via `comparison_range`)
+- Identify performance trends and anomalies
+- Suggest optimizations for slow builds
+- Highlight significant performance changes
 
 ### Multiple Steps with Different Configurations
 
