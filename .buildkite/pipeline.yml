@@ -15,4 +15,4 @@ steps:
   - label: ":book: Lint"
     plugins:
       - plugin-linter#v3.3.0:
-          id: claude-code
+          id: mcncl/claude-code
