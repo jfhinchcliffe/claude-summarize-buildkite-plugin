@@ -146,6 +146,28 @@ plugins:
       annotate: false  # Only output to build logs
 ```
 
+#### `agent_file` (boolean or string)
+
+Include project context from an agent file in the analysis. Default: `false`
+
+- `true`: Include `AGENT.md` from the repository root
+- `false`: Don't include any agent context
+- `"path/to/file.md"`: Include the specified file
+
+```yaml
+plugins:
+  - mcncl/claude-code#v1.0.0:
+      api_key: "${ANTHROPIC_API_KEY}"
+      agent_file: true  # Use AGENT.md
+
+  # Or specify a custom file
+  - mcncl/claude-code#v1.0.0:
+      api_key: "${ANTHROPIC_API_KEY}"
+      agent_file: "docs/build-context.md"
+```
+
+The agent file should contain project-specific context like architecture details, common issues, coding standards, or troubleshooting guides that help Claude provide more relevant analysis.
+
 ## Examples
 
 ### Basic Usage - Analyze Failed Tests
