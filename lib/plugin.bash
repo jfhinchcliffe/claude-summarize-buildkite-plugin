@@ -731,7 +731,7 @@ Build URL: ${BUILDKITE_BUILD_URL:-Unknown}"
 Step Duration: ${current_build_time}s"
               fi
             fi
-          elif [ -n "${started_at}" ] && ([ -z "${finished_at}" ] || [ "${finished_at}" = "null" ]); then
+          elif [ -n "${started_at}" ] && { [ -z "${finished_at}" ] || [ "${finished_at}" = "null" ]; } then
             # Step still running, calculate time so far
             if command -v date >/dev/null 2>&1; then
               local start_epoch now_epoch
@@ -775,7 +775,7 @@ Step Duration (so far): ${current_build_time}s"
 Build Duration: ${current_build_time}s"
               fi
             fi
-          elif [ -n "${started_at}" ] && ([ -z "${finished_at}" ] || [ "${finished_at}" = "null" ]); then
+          elif [ -n "${started_at}" ] && { [ -z "${finished_at}" ] || [ "${finished_at}" = "null" ]; } then
             # Build still running, calculate time so far
             if command -v date >/dev/null 2>&1; then
               local start_epoch now_epoch
