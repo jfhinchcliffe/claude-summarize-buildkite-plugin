@@ -456,9 +456,11 @@ function create_annotation() {
 function get_build_history() {
   local api_token="$1"
   local comparison_range="${2:-5}"
+  local analysis_level="${3:-step}"
   local current_build_number="${BUILDKITE_BUILD_NUMBER}"
+  local current_step_key="${BUILDKITE_STEP_KEY:-}"
   
-  echo "--- :clock1: Fetching build history for comparison" >&2
+  echo "--- :clock1: Fetching build history for comparison (level: ${analysis_level})" >&2
   
   if [ -z "${api_token}" ]; then
     echo "Warning: No API token available for build history comparison" >&2
@@ -468,7 +470,68 @@ function get_build_history() {
   local builds_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds"
   local history_file="/tmp/build_history_${BUILDKITE_BUILD_ID}.json"
   
-  # Fetch recent builds (get more than needed to filter out current build)
+  # For step-level comparison, we need to track job-specific info
+  if [ "${analysis_level}" = "step" ] && [ -n "${current_step_key}" ]; then
+    echo "Fetching step-level comparison data for step key: ${current_step_key}" >&2
+    local step_history_file="/tmp/step_history_${BUILDKITE_BUILD_ID}.json"
+    
+    # Fetch recent builds (get more than needed to filter out current build)
+    local fetch_count=$((comparison_range + 15))
+    if curl -s -f -H "Authorization: Bearer ${api_token}" "${builds_url}?per_page=${fetch_count}&finished_from=$(date -d '30 days ago' '+%Y-%m-%d')" > "${history_file}.raw" 2>/dev/null; then
+      if command -v jq >/dev/null 2>&1; then
+        # Filter out current build and get the requested number of previous builds
+        jq --arg current_build "${current_build_number}" '
+          [.[] | select(.number != ($current_build | tonumber) and .state == "finished")] 
+          | sort_by(.number) 
+          | reverse' "${history_file}.raw" > "${history_file}" 2>/dev/null
+        
+        # Process each build to extract step information
+        echo "[]" > "${step_history_file}"
+        local count=0
+        local build_numbers=""
+        build_numbers=$(jq -r '.[].number' "${history_file}" 2>/dev/null)
+        
+        for build_number in ${build_numbers}; do
+          # Get details for this build
+          local build_url="${builds_url}/${build_number}"
+          local build_detail_file="/tmp/build_${build_number}_${BUILDKITE_BUILD_ID}.json"
+          
+          if curl -s -f -H "Authorization: Bearer ${api_token}" "${build_url}" > "${build_detail_file}" 2>/dev/null; then
+            # Extract job with matching step_key
+            local job_info
+            job_info=$(jq --arg step_key "${current_step_key}" '.jobs[] | select(.step_key == $step_key)' "${build_detail_file}" 2>/dev/null)
+            
+            if [ -n "${job_info}" ] && [ "${job_info}" != "null" ]; then
+              # Add build number to the job info
+              job_info=$(echo "${job_info}" | jq --arg build_number "${build_number}" '. + {build_number: $build_number}')
+              
+              # Append to our step history file
+              jq -n --argjson current "$(cat "${step_history_file}")" --argjson job "${job_info}" '$current + [$job]' > "${step_history_file}.tmp" 2>/dev/null
+              mv "${step_history_file}.tmp" "${step_history_file}"
+              
+              count=$((count + 1))
+              if [ "${count}" -ge "${comparison_range}" ]; then
+                break
+              fi
+            fi
+            rm -f "${build_detail_file}"
+          fi
+        done
+        
+        if [ "${count}" -gt 0 ]; then
+          echo "Successfully fetched step-level history for ${count} previous builds" >&2
+          echo "${step_history_file}"
+          return 0
+        else
+          echo "Warning: Could not find matching steps in previous builds" >&2
+        fi
+      fi
+    fi
+    
+    echo "Warning: Falling back to build-level comparison" >&2
+  fi
+  
+  # Build-level comparison (default fallback)
   local fetch_count=$((comparison_range + 10))
   if curl -s -f -H "Authorization: Bearer ${api_token}" "${builds_url}?per_page=${fetch_count}&finished_from=$(date -d '30 days ago' '+%Y-%m-%d')" > "${history_file}" 2>/dev/null; then
     if command -v jq >/dev/null 2>&1; then
@@ -482,6 +545,7 @@ function get_build_history() {
       
       if [ -n "${filtered_builds}" ] && [ "${filtered_builds}" != "[]" ]; then
         echo "${filtered_builds}" > "${history_file}"
+        echo "Successfully fetched build-level history for comparison" >&2
         echo "${history_file}"
         return 0
       fi
@@ -496,28 +560,55 @@ function get_build_history() {
 function analyze_build_times() {
   local history_file="$1"
   local current_build_time="$2"
+  local analysis_level="${3:-build}"
+  local step_key="${4:-}"
   
   if [ ! -f "${history_file}" ] || ! command -v jq >/dev/null 2>&1; then
     return 1
   fi
   
   local analysis_file="/tmp/build_time_analysis_${BUILDKITE_BUILD_ID}.txt"
+  local is_step_level=false
+  
+  # Check if this is step-level analysis with step history
+  if [ "${analysis_level}" = "step" ] && [ -n "${step_key}" ] && grep -q "step_key" "${history_file}" 2>/dev/null; then
+    is_step_level=true
+  fi
   
   {
-    echo "Build Time Comparison Analysis:"
-    echo "Current Build: #${BUILDKITE_BUILD_NUMBER} (${current_build_time}s)"
+    if [ "${is_step_level}" = "true" ]; then
+      echo "Step Time Comparison Analysis:"
+      echo "Current Step: ${BUILDKITE_LABEL:-Unknown} (${current_build_time}s)"
+      echo "Step Key: ${step_key}"
+    else
+      echo "Build Time Comparison Analysis:"
+      echo "Current Build: #${BUILDKITE_BUILD_NUMBER} (${current_build_time}s)"
+    fi
     echo ""
-    echo "Recent Build History:"
     
-    # Extract build times and calculate statistics
-    jq -r '.[] | "Build #\(.number): \(.finished_at | fromdateiso8601 - (.started_at | fromdateiso8601))s (\(.state)) - \(.message // "No message" | .[0:60])"' "${history_file}" 2>/dev/null
-    
-    echo ""
-    echo "Build Time Statistics:"
-    
-    # Calculate average, min, max
-    local times
-    times=$(jq -r '.[] | (.finished_at | fromdateiso8601) - (.started_at | fromdateiso8601)' "${history_file}" 2>/dev/null)
+    if [ "${is_step_level}" = "true" ]; then
+      echo "Recent Step History:"
+      # Format step-specific information
+      jq -r '.[] | "Build #\(.build_number): \(.finished_at | fromdateiso8601 - (.started_at | fromdateiso8601))s (\(.state)) - \(.name // "Unknown step")"' "${history_file}" 2>/dev/null
+      
+      echo ""
+      echo "Step Time Statistics:"
+      
+      # Calculate average, min, max for steps
+      local times
+      times=$(jq -r '.[] | (.finished_at | fromdateiso8601) - (.started_at | fromdateiso8601)' "${history_file}" 2>/dev/null)
+    else
+      echo "Recent Build History:"
+      # Format build information
+      jq -r '.[] | "Build #\(.number): \(.finished_at | fromdateiso8601 - (.started_at | fromdateiso8601))s (\(.state)) - \(.message // "No message" | .[0:60])"' "${history_file}" 2>/dev/null
+      
+      echo ""
+      echo "Build Time Statistics:"
+      
+      # Calculate average, min, max for builds
+      local times
+      times=$(jq -r '.[] | (.finished_at | fromdateiso8601) - (.started_at | fromdateiso8601)' "${history_file}" 2>/dev/null)
+    fi
     
     if [ -n "${times}" ]; then
       local avg min max count
@@ -526,20 +617,29 @@ function analyze_build_times() {
       max=$(echo "${times}" | sort -n | tail -1)
       count=$(echo "${times}" | wc -l)
       
-      echo "- Average: ${avg}s (over ${count} builds)"
+      echo "- Average: ${avg}s (over ${count} $([ "${is_step_level}" = "true" ] && echo "steps" || echo "builds"))"
       echo "- Fastest: ${min}s"
       echo "- Slowest: ${max}s"
       echo "- Current vs Average: $((current_build_time - avg))s difference"
       
       # Trend analysis
       if [ "${current_build_time}" -gt $((avg + 60)) ]; then
-        echo "- Trend: ⚠️  Current build is significantly slower than average"
+        echo "- Trend: ⚠️  Current $([ "${is_step_level}" = "true" ] && echo "step" || echo "build") is significantly slower than average"
       elif [ "${current_build_time}" -gt "${avg}" ]; then
-        echo "- Trend: 📈 Current build is slower than average"
+        echo "- Trend: 📈 Current $([ "${is_step_level}" = "true" ] && echo "step" || echo "build") is slower than average"
       elif [ "${current_build_time}" -lt $((avg - 60)) ]; then
-        echo "- Trend: ⚡ Current build is significantly faster than average"
+        echo "- Trend: ⚡ Current $([ "${is_step_level}" = "true" ] && echo "step" || echo "build") is significantly faster than average"
       else
-        echo "- Trend: ✅ Current build time is normal"
+        echo "- Trend: ✅ Current $([ "${is_step_level}" = "true" ] && echo "step" || echo "build") time is normal"
+      fi
+      
+      # Add step-specific analysis if available
+      if [ "${is_step_level}" = "true" ]; then
+        echo ""
+        echo "Step Performance Factors:"
+        echo "- Check for code changes affecting this specific step"
+        echo "- Look for dependency changes that might impact this step"
+        echo "- Examine resource contention or system load during step execution"
       fi
     fi
   } > "${analysis_file}"
@@ -598,7 +698,22 @@ Build URL: ${BUILDKITE_BUILD_URL:-Unknown}"
   # Calculate current build time if available
   local current_build_time=""
   local build_time_analysis=""
-  if [ -n "${BUILDKITE_BUILD_STARTED_AT:-}" ] && [ -n "${BUILDKITE_BUILD_FINISHED_AT:-}" ]; then
+  
+  # For step-level analysis, try to get step-specific timing
+  if [ "${analysis_level}" = "step" ] && [ -n "${BUILDKITE_JOB_STARTED_AT:-}" ] && [ -n "${BUILDKITE_JOB_FINISHED_AT:-}" ]; then
+    if command -v date >/dev/null 2>&1; then
+      local start_epoch finish_epoch
+      start_epoch=$(date -d "${BUILDKITE_JOB_STARTED_AT}" +%s 2>/dev/null || echo "")
+      finish_epoch=$(date -d "${BUILDKITE_JOB_FINISHED_AT}" +%s 2>/dev/null || echo "")
+      
+      if [ -n "${start_epoch}" ] && [ -n "${finish_epoch}" ]; then
+        current_build_time=$((finish_epoch - start_epoch))
+        build_info="${build_info}
+Step Duration: ${current_build_time}s"
+      fi
+    fi
+  # Otherwise, use build-level timing
+  elif [ -n "${BUILDKITE_BUILD_STARTED_AT:-}" ] && [ -n "${BUILDKITE_BUILD_FINISHED_AT:-}" ]; then
     if command -v date >/dev/null 2>&1; then
       local start_epoch finish_epoch
       start_epoch=$(date -d "${BUILDKITE_BUILD_STARTED_AT}" +%s 2>/dev/null || echo "")
@@ -618,9 +733,10 @@ Build Duration: ${current_build_time}s"
     api_token=$(get_buildkite_api_token)
     if [ -n "${api_token}" ]; then
       local history_file
-      if history_file=$(get_build_history "${api_token}" "${comparison_range}"); then
+      # Pass the analysis level to the history function
+      if history_file=$(get_build_history "${api_token}" "${comparison_range}" "${analysis_level}" "${BUILDKITE_STEP_KEY:-}"); then
         local time_analysis_file
-        if time_analysis_file=$(analyze_build_times "${history_file}" "${current_build_time}"); then
+        if time_analysis_file=$(analyze_build_times "${history_file}" "${current_build_time}" "${analysis_level}" "${BUILDKITE_STEP_KEY:-}"); then
           build_time_analysis=$(< "${time_analysis_file}")
         fi
       fi
