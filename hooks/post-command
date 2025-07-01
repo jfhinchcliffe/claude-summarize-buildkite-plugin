@@ -255,6 +255,7 @@ ERROR
       create_annotation "Claude Analysis Failed" "${error_annotation}" "warning"
     fi
   fi
+  fi
 else
   echo "--- :zzz: Skipping Claude analysis (trigger: ${TRIGGER}, exit status: ${COMMAND_EXIT_STATUS})"
 fi
