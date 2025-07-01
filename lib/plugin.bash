@@ -342,10 +342,16 @@ function call_claude_api() {
   echo "Model: ${model}" >> "${debug_file}"
 
   # Prepare the API request
-  local json_payload
-  json_payload=$(jq -n \
+  local prompt_file="/tmp/claude_prompt_${BUILDKITE_BUILD_ID}.txt"
+  local payload_file="/tmp/claude_payload_${BUILDKITE_BUILD_ID}.json"
+  
+  # Write prompt to file
+  echo "$prompt" > "${prompt_file}"
+  
+  # Create JSON payload file using jq with rawfile
+  jq -n \
     --arg model "$model" \
-    --arg prompt "$prompt" \
+    --rawfile prompt "${prompt_file}" \
     '{
       model: $model,
       max_tokens: 4000,
@@ -355,7 +361,7 @@ function call_claude_api() {
           content: $prompt
         }
       ]
-    }')
+    }' > "${payload_file}"
 
   # Make API call silently but log any errors
   local http_code
@@ -365,7 +371,7 @@ function call_claude_api() {
     -H "Content-Type: application/json" \
     -H "x-api-key: ${api_key}" \
     -H "anthropic-version: 2023-06-01" \
-    -d "${json_payload}" \
+    -d "@${payload_file}" \
     "https://api.anthropic.com/v1/messages" \
     -o "${response_file}" 2>> "${debug_file}")
   if [ "${http_code}" -ne 200 ]; then
