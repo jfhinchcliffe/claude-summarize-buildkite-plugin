@@ -1,18 +1,4 @@
-env:
-  BUILDKITE_PLUGINS_ALWAYS_CLONE_FRESH: true
-
 steps:
-  - label: ":shell: Tests"
-    plugins:
-      - plugin-tester#v1.1.1:
-          folders:
-            - tests
-
-  - label: ":sparkles: Lint"
-    plugins:
-      - plugin-linter#v3.3.0:
-          id: claude-code
-
   - label: ":shell: Shellcheck"
     plugins:
       - shellcheck#v1.4.0:
@@ -20,3 +6,13 @@ steps:
             - hooks/**
             - lib/**
             - tests/**
+
+  - label: ":test_tube: Tests"
+    plugins:
+      - docker-compose#v5.10.0:
+          run: tests
+
+  - label: ":book: Lint"
+    plugins:
+      - plugin-linter#v2.1.0:
+          id: claude-code
