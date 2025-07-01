@@ -270,6 +270,9 @@ function call_claude_api() {
   if [ "${http_code}" -ne 200 ]; then
     echo "Claude API call failed with HTTP code ${http_code}" >&2
   fi
+  
+  # Return the response file path
+  echo "${response_file}"
 }
 
 # Extract Claude's response content
