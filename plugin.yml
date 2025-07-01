@@ -49,6 +49,14 @@ configuration:
       type: [boolean, string]
       description: Include agent context file - true for AGENT.md, false to disable, or string path to custom file
       default: false
+    compare_builds:
+      type: boolean
+      description: Enable build time comparison analysis
+      default: false
+    comparison_range:
+      type: integer
+      description: Number of previous builds to compare against for build time analysis
+      default: 5
     secret_name:
       type: string
       description: Name of Buildkite secret containing the Anthropic API key (alternative to api_key)

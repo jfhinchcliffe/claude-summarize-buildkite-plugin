@@ -112,6 +112,8 @@ CUSTOM_PROMPT=$(plugin_read_config CUSTOM_PROMPT "")
 TIMEOUT=$(plugin_read_config TIMEOUT "60")
 ANNOTATE=$(plugin_read_config ANNOTATE "true")
 AGENT_FILE=$(plugin_read_config AGENT_FILE "false")
+COMPARE_BUILDS=$(plugin_read_config COMPARE_BUILDS "false")
+COMPARISON_RANGE=$(plugin_read_config COMPARISON_RANGE "5")
 
 # Validate required configuration
 if [ -z "${API_KEY}" ]; then
@@ -147,7 +149,7 @@ if should_trigger_analysis "${TRIGGER}" "${COMMAND_EXIT_STATUS}"; then
   
   # Perform analysis (disable exit on error temporarily)
   set +e
-  ANALYSIS=$(analyze_build_failure "${API_KEY}" "${MODEL}" "${MAX_LOG_LINES}" "${CUSTOM_PROMPT}" "${TIMEOUT}" "${AGENT_FILE}" "${ANALYSIS_LEVEL}")
+  ANALYSIS=$(analyze_build_failure "${API_KEY}" "${MODEL}" "${MAX_LOG_LINES}" "${CUSTOM_PROMPT}" "${TIMEOUT}" "${AGENT_FILE}" "${ANALYSIS_LEVEL}" "${COMPARE_BUILDS}" "${COMPARISON_RANGE}")
   ANALYSIS_EXIT_CODE=$?
   set -e
   

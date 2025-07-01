@@ -452,6 +452,102 @@ function create_annotation() {
     < "${annotation_file}"
 }
 
+# Get historical build data for comparison
+function get_build_history() {
+  local api_token="$1"
+  local comparison_range="${2:-5}"
+  local current_build_number="${BUILDKITE_BUILD_NUMBER}"
+  
+  echo "--- :clock1: Fetching build history for comparison" >&2
+  
+  if [ -z "${api_token}" ]; then
+    echo "Warning: No API token available for build history comparison" >&2
+    return 1
+  fi
+  
+  local builds_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds"
+  local history_file="/tmp/build_history_${BUILDKITE_BUILD_ID}.json"
+  
+  # Fetch recent builds (get more than needed to filter out current build)
+  local fetch_count=$((comparison_range + 10))
+  if curl -s -f -H "Authorization: Bearer ${api_token}" "${builds_url}?per_page=${fetch_count}&finished_from=$(date -d '30 days ago' '+%Y-%m-%d')" > "${history_file}" 2>/dev/null; then
+    if command -v jq >/dev/null 2>&1; then
+      # Filter out current build and get the requested number of previous builds
+      local filtered_builds
+      filtered_builds=$(jq --arg current_build "${current_build_number}" '
+        [.[] | select(.number != ($current_build | tonumber) and .state == "finished")] 
+        | sort_by(.number) 
+        | reverse 
+        | .[:'"${comparison_range}"']' "${history_file}" 2>/dev/null)
+      
+      if [ -n "${filtered_builds}" ] && [ "${filtered_builds}" != "[]" ]; then
+        echo "${filtered_builds}" > "${history_file}"
+        echo "${history_file}"
+        return 0
+      fi
+    fi
+  fi
+  
+  echo "Warning: Could not fetch build history for comparison" >&2
+  return 1
+}
+
+# Analyze build time trends
+function analyze_build_times() {
+  local history_file="$1"
+  local current_build_time="$2"
+  
+  if [ ! -f "${history_file}" ] || ! command -v jq >/dev/null 2>&1; then
+    return 1
+  fi
+  
+  local analysis_file="/tmp/build_time_analysis_${BUILDKITE_BUILD_ID}.txt"
+  
+  {
+    echo "Build Time Comparison Analysis:"
+    echo "Current Build: #${BUILDKITE_BUILD_NUMBER} (${current_build_time}s)"
+    echo ""
+    echo "Recent Build History:"
+    
+    # Extract build times and calculate statistics
+    jq -r '.[] | "Build #\(.number): \(.finished_at | fromdateiso8601 - (.started_at | fromdateiso8601))s (\(.state)) - \(.message // "No message" | .[0:60])"' "${history_file}" 2>/dev/null
+    
+    echo ""
+    echo "Build Time Statistics:"
+    
+    # Calculate average, min, max
+    local times
+    times=$(jq -r '.[] | (.finished_at | fromdateiso8601) - (.started_at | fromdateiso8601)' "${history_file}" 2>/dev/null)
+    
+    if [ -n "${times}" ]; then
+      local avg min max count
+      avg=$(echo "${times}" | awk '{sum+=$1} END {printf "%.0f", sum/NR}')
+      min=$(echo "${times}" | sort -n | head -1)
+      max=$(echo "${times}" | sort -n | tail -1)
+      count=$(echo "${times}" | wc -l)
+      
+      echo "- Average: ${avg}s (over ${count} builds)"
+      echo "- Fastest: ${min}s"
+      echo "- Slowest: ${max}s"
+      echo "- Current vs Average: $((current_build_time - avg))s difference"
+      
+      # Trend analysis
+      if [ "${current_build_time}" -gt $((avg + 60)) ]; then
+        echo "- Trend: ⚠️  Current build is significantly slower than average"
+      elif [ "${current_build_time}" -gt "${avg}" ]; then
+        echo "- Trend: 📈 Current build is slower than average"
+      elif [ "${current_build_time}" -lt $((avg - 60)) ]; then
+        echo "- Trend: ⚡ Current build is significantly faster than average"
+      else
+        echo "- Trend: ✅ Current build time is normal"
+      fi
+    fi
+  } > "${analysis_file}"
+  
+  echo "${analysis_file}"
+  return 0
+}
+
 # Get agent context file content
 function get_agent_context() {
   local agent_file_config="$1"
@@ -489,8 +585,8 @@ function analyze_build_failure() {
   local timeout="${5:-60}"
   local agent_file="${6:-false}"
   local analysis_level="${7:-step}"
-
-  echo "--- :detective: Starting build analysis (level: ${analysis_level})"
+  local compare_builds="${8:-false}"
+  local comparison_range="${9:-5}"
 
   # Get build information
   local build_info="Build: ${BUILDKITE_PIPELINE_SLUG} #${BUILDKITE_BUILD_NUMBER}
@@ -498,6 +594,38 @@ Job: ${BUILDKITE_LABEL:-Unknown}
 Branch: ${BUILDKITE_BRANCH:-Unknown}
 Commit: ${BUILDKITE_COMMIT:-Unknown}
 Build URL: ${BUILDKITE_BUILD_URL:-Unknown}"
+
+  # Calculate current build time if available
+  local current_build_time=""
+  local build_time_analysis=""
+  if [ -n "${BUILDKITE_BUILD_STARTED_AT:-}" ] && [ -n "${BUILDKITE_BUILD_FINISHED_AT:-}" ]; then
+    if command -v date >/dev/null 2>&1; then
+      local start_epoch finish_epoch
+      start_epoch=$(date -d "${BUILDKITE_BUILD_STARTED_AT}" +%s 2>/dev/null || echo "")
+      finish_epoch=$(date -d "${BUILDKITE_BUILD_FINISHED_AT}" +%s 2>/dev/null || echo "")
+      
+      if [ -n "${start_epoch}" ] && [ -n "${finish_epoch}" ]; then
+        current_build_time=$((finish_epoch - start_epoch))
+        build_info="${build_info}
+Build Duration: ${current_build_time}s"
+      fi
+    fi
+  fi
+
+  # Get build time comparison if enabled
+  if [ "${compare_builds}" = "true" ] && [ -n "${current_build_time}" ]; then
+    local api_token
+    api_token=$(get_buildkite_api_token)
+    if [ -n "${api_token}" ]; then
+      local history_file
+      if history_file=$(get_build_history "${api_token}" "${comparison_range}"); then
+        local time_analysis_file
+        if time_analysis_file=$(analyze_build_times "${history_file}" "${current_build_time}"); then
+          build_time_analysis=$(< "${time_analysis_file}")
+        fi
+      fi
+    fi
+  fi
 
   # Get logs based on analysis level
   local log_file
@@ -524,6 +652,13 @@ Build URL: ${BUILDKITE_BUILD_URL:-Unknown}"
 ${agent_context}"
   fi
 
+  # Add build time analysis if available
+  if [ -n "${build_time_analysis}" ]; then
+    base_prompt="${base_prompt}
+
+${build_time_analysis}"
+  fi
+
   # Build appropriate information section based on analysis level
   if [ "${analysis_level}" = "build" ]; then
     base_prompt="${base_prompt}
@@ -540,11 +675,12 @@ ${logs}
 Please provide:
 1. **Analysis**: What happened in this build? $([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "Why did any jobs fail?" || echo "Any notable issues or warnings across jobs?")
 2. **Key Points**: Important information across all jobs and their significance
-3. **Problematic Jobs**: Identify which jobs had issues and summarize each problem
-4. **Recommendations**: $([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "Specific actionable steps to resolve the issues" || echo "Suggested improvements or optimizations")
-5. **Best Practices**: How to improve this build for the future
+3. **Problematic Jobs**: Identify which jobs had issues and summarize each problem$([ -n "${build_time_analysis}" ] && echo "
+4. **Build Time Analysis**: Based on the build time comparison data above, analyze performance trends and identify potential causes for any significant time changes")
+$([ -n "${build_time_analysis}" ] && echo "5. **Recommendations**: Specific actionable steps to resolve issues and optimize build performance" || echo "4. **Recommendations**: Specific actionable steps to resolve the issues")
+$([ -n "${build_time_analysis}" ] && echo "6. **Best Practices**: How to improve this build for the future, including performance optimization" || echo "5. **Best Practices**: How to improve this build for the future")
 
-Focus on being practical and actionable. If you see common patterns (dependency issues, test failures, configuration problems, etc.) across multiple jobs, highlight them clearly."
+Focus on being practical and actionable. If you see common patterns (dependency issues, test failures, configuration problems, etc.) across multiple jobs, highlight them clearly.$([ -n "${build_time_analysis}" ] && echo " Pay special attention to build time trends and performance implications.")"
   else
     base_prompt="${base_prompt}
 
@@ -562,11 +698,12 @@ ${logs}
 
 Please provide:
 1. **Analysis**: What happened in this step? $([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "Why did it fail?" || echo "Any notable issues or warnings?")
-2. **Key Points**: Important information and their significance
-3. **Recommendations**: $([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "Specific actionable steps to resolve the issue" || echo "Suggested improvements or optimizations")
-4. **Best Practices**: How to improve this step for the future
+2. **Key Points**: Important information and their significance$([ -n "${build_time_analysis}" ] && echo "
+3. **Build Time Analysis**: Based on the build time comparison data above, analyze performance trends and identify potential causes for any significant time changes")
+$([ -n "${build_time_analysis}" ] && echo "4. **Recommendations**: Specific actionable steps to resolve issues and optimize build performance" || echo "3. **Recommendations**: Specific actionable steps to resolve the issue")
+$([ -n "${build_time_analysis}" ] && echo "5. **Best Practices**: How to improve this step for the future, including performance optimization" || echo "4. **Best Practices**: How to improve this step for the future")
 
-Focus on being practical and actionable. If you see common patterns (dependency issues, test failures, configuration problems, etc.), highlight them clearly."
+Focus on being practical and actionable. If you see common patterns (dependency issues, test failures, configuration problems, etc.), highlight them clearly.$([ -n "${build_time_analysis}" ] && echo " Pay special attention to build time trends and performance implications.")"
   fi
 
   local full_prompt="${base_prompt}"
