@@ -107,7 +107,7 @@ function get_build_logs() {
             
             # Process each job
             local job_count=0
-            for job_id in ${job_ids}; do
+            for job_id in ${job_ids}; do  # Word splitting is intentional here
               local job_log_file="/tmp/job_${job_id}_logs.txt"
               local job_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}/jobs/${job_id}/log"
               
@@ -122,7 +122,7 @@ function get_build_logs() {
               fi
               
               # Add a separator for this job
-              { printf "\n========================================"; echo "JOB: ${job_name} (${job_id})"; printf "========================================\n" } >> "${log_file}"
+              { printf "\n========================================"; echo "JOB: ${job_name} (${job_id})"; printf "========================================\n"; } >> "${log_file}"
               
               # Fetch this job's logs
               if curl -s -f -H "Authorization: Bearer ${api_token}" "${job_url}" > "${job_log_file}.raw" 2>/dev/null; then
