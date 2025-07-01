@@ -174,9 +174,9 @@ steps:
 
 | Elastic Stack | Agent Stack K8s | Hosted (Mac) | Hosted (Linux) | Notes |
 | :-----------: | :-------------: | :----------: | :------------: | :---- |
-| 🧪 | 🧪 | 🧪 | 🧪 |   |
+| ✅ | ✅ | ✅ | ✅ |   |
 
-- 🧪 Testing compatibility
+- ✅ Fully compatible assuming requirements are met
 
 ## ⚒ Developing
 
