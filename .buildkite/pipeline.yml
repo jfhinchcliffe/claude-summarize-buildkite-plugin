@@ -7,9 +7,6 @@ steps:
       - plugin-tester#v1.1.1:
           folders:
             - tests
-      - https://github.com/mcncl/claude-code-buildkite-plugin:
-          secret_name: "ANTHROPIC_API_KEY"
-          trigger: always
 
   - label: ":sparkles: Lint"
     plugins:
@@ -22,3 +19,4 @@ steps:
           files:
             - hooks/**
             - lib/**
+            - tests/**
