@@ -1,5 +1,7 @@
 #!/usr/bin/env bats
 
+# shellcheck disable=SC2030,SC2031 # Disable warnings for variable modifications in BATS subshells
+
 setup() {
   load "${BATS_PLUGIN_PATH}/load.bash"
 
@@ -14,11 +16,11 @@ setup() {
   export BUILDKITE_COMMIT='abc123'
   export BUILDKITE_LABEL='Test Job'
   export BUILDKITE_BUILD_URL='https://buildkite.com/test/test-pipeline/builds/42'
-  
+
   # Pre-create the mock response file that our curl stub will reference
   mkdir -p /tmp
   printf '{"content":[{"text":"## Root Cause Analysis\nMock analysis from Claude\n\n## Suggested Fixes\n1. Check your configuration\n2. Verify dependencies"}]}' > "/tmp/claude_response_${BUILDKITE_BUILD_ID}.json"
-  
+
   # Mock tools with simpler stubs
   stub curl \
     "* : echo '200'"
@@ -33,7 +35,7 @@ teardown() {
   # Clean up mock files
   rm -f "/tmp/claude_response_${BUILDKITE_BUILD_ID:-test-build-123}.json"
   rm -f "/tmp/buildkite_logs_${BUILDKITE_BUILD_ID:-test-build-123}.txt"
-  
+
   # Only unstub if they were actually stubbed
   if command -v curl >/dev/null 2>&1 && curl --help 2>&1 | grep -q "stub"; then
     unstub curl
