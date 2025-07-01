@@ -25,5 +25,6 @@ steps:
     plugins:
       - https://github.com/mcncl/claude-code-buildkite-plugin#main:
           secret_name: "ANTHROPIC_API_KEY"
+          buildkite_api_token: "$BUILDKITE_API_TOKEN"
           trigger: always
           analysis_level: build
