@@ -2,6 +2,6 @@
 set -euo pipefail
 
 # Get the API key directly from Buildkite secrets and export it
-APIKEY=$(buildkite-agent secret get BUILDKITE_API_TOKEN)
+APIKEY=$(buildkite-agent secret get BUILD_TOKEN)
 export BUILDKITE_API_TOKEN="$APIKEY"
 echo "API key set successfully"
