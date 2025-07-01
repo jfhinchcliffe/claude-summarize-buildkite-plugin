@@ -21,6 +21,11 @@ configuration:
       description: When to trigger Claude analysis
       enum: ["on-failure", "always", "manual"]
       default: on-failure
+    analysis_level:
+      type: string
+      description: Level at which to analyze logs - 'step' for current step only, 'build' for all jobs in the build
+      enum: ["step", "build"]
+      default: step
     max_log_lines:
       type: integer
       description: Maximum number of log lines to analyze

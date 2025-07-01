@@ -78,11 +78,114 @@ function plugin_read_config() {
 function get_build_logs() {
   local api_token=""
   local max_lines="${1:-1000}"
+  local analysis_level="${2:-step}"
   local log_file="/tmp/buildkite_logs_${BUILDKITE_BUILD_ID}.txt"
 
-  echo "--- :mag: Fetching build logs" >&2
+  echo "--- :mag: Fetching build logs (level: ${analysis_level})" >&2
 
-  # Method 1: Try Buildkite API if token and job ID are available
+  # For build-level analysis, try to get all jobs in the build
+  if [ "${analysis_level}" = "build" ]; then
+    # Try to get all jobs for the build
+    api_token=$(get_buildkite_api_token)
+    if [ -n "${api_token}" ]; then
+      echo "Attempting to fetch logs for all jobs in build via Buildkite API..." >&2
+      
+      # First, get the build to find all jobs
+      local build_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}"
+      
+      if curl -s -f -H "Authorization: Bearer ${api_token}" "${build_url}" > "/tmp/build_${BUILDKITE_BUILD_ID}.json" 2>/dev/null; then
+        # Extract job IDs from the build
+        if command -v jq >/dev/null 2>&1; then
+          local job_ids
+          job_ids=$(jq -r '.jobs[].id' "/tmp/build_${BUILDKITE_BUILD_ID}.json" 2>/dev/null)
+          
+          if [ -n "${job_ids}" ]; then
+            echo "Found jobs in build: $(echo "${job_ids}" | wc -l)" >&2
+            
+            # Create a combined log file
+            : > "${log_file}"
+            
+            # Process each job
+            local job_count=0
+            for job_id in ${job_ids}; do
+              local job_log_file="/tmp/job_${job_id}_logs.txt"
+              local job_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}/jobs/${job_id}/log"
+              
+              # Get job details for header
+              local job_details_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}/jobs/${job_id}"
+              local job_name="Job ${job_id}"
+              
+              if curl -s -f -H "Authorization: Bearer ${api_token}" "${job_details_url}" > "/tmp/job_${job_id}_details.json" 2>/dev/null; then
+                if command -v jq >/dev/null 2>&1; then
+                  job_name=$(jq -r '.name // "Job '${job_id}'"' "/tmp/job_${job_id}_details.json" 2>/dev/null)
+                fi
+              fi
+              
+              # Add a separator for this job
+              echo "\n========================================" >> "${log_file}"
+              echo "JOB: ${job_name} (${job_id})" >> "${log_file}"
+              echo "========================================\n" >> "${log_file}"
+              
+              # Fetch this job's logs
+              if curl -s -f -H "Authorization: Bearer ${api_token}" "${job_url}" > "${job_log_file}.raw" 2>/dev/null; then
+                # Process the log similar to the step-level function
+                if grep -q '"content":' "${job_log_file}.raw" 2>/dev/null; then
+                  if command -v jq >/dev/null 2>&1; then
+                    jq -r '.content' "${job_log_file}.raw" > "${job_log_file}" 2>/dev/null
+                    if [ ! -s "${job_log_file}" ]; then
+                      # Fallback if jq fails
+                      cat "${job_log_file}.raw" > "${job_log_file}"
+                    fi
+                  else
+                    # Fallback if jq is not available
+                    cat "${job_log_file}.raw" > "${job_log_file}"
+                  fi
+                else
+                  # Not JSON, use as is
+                  cat "${job_log_file}.raw" > "${job_log_file}"
+                fi
+                
+                # Append logs to the combined file (last N lines)
+                if [ -s "${job_log_file}" ]; then
+                  # Calculate lines per job based on the total max and job count
+                  # For simplicity we'll use max_lines/10 lines per job with a minimum of 100
+                  local lines_per_job=$((max_lines / 10))
+                  if [ "${lines_per_job}" -lt 100 ]; then
+                    lines_per_job=100
+                  fi
+                  
+                  tail -n "${lines_per_job}" "${job_log_file}" >> "${log_file}"
+                  job_count=$((job_count + 1))
+                fi
+                
+                # Clean up
+                rm -f "${job_log_file}.raw" "${job_log_file}"
+              else
+                echo "Warning: Failed to fetch logs for job ${job_id}" >&2
+                echo "Could not fetch logs for this job." >> "${log_file}"
+              fi
+              
+              rm -f "/tmp/job_${job_id}_details.json"
+            done
+            
+            if [ "${job_count}" -gt 0 ]; then
+              echo "Successfully fetched logs for ${job_count} jobs" >&2
+              echo "${log_file}"
+              return 0
+            fi
+          fi
+        fi
+        
+        rm -f "/tmp/build_${BUILDKITE_BUILD_ID}.json"
+      else
+        echo "Warning: Failed to fetch build details from API" >&2
+      fi
+    fi
+    
+    echo "Warning: Could not get build-level logs, falling back to step-level" >&2
+  fi
+  
+  # Method 1: Try Buildkite API if token and job ID are available (step-level analysis)
   api_token=$(get_buildkite_api_token)
   if [ -n "${api_token}" ] && [ -n "${BUILDKITE_JOB_ID:-}" ]; then
     echo "Attempting to fetch logs via Buildkite API..." >&2
@@ -381,8 +484,9 @@ function analyze_build_failure() {
   local custom_prompt="${4:-}"
   local timeout="${5:-60}"
   local agent_file="${6:-false}"
+  local analysis_level="${7:-step}"
 
-  echo "--- :detective: Starting build analysis"
+  echo "--- :detective: Starting build analysis (level: ${analysis_level})"
 
   # Get build information
   local build_info="Build: ${BUILDKITE_PIPELINE_SLUG} #${BUILDKITE_BUILD_NUMBER}
@@ -391,9 +495,9 @@ Branch: ${BUILDKITE_BRANCH:-Unknown}
 Commit: ${BUILDKITE_COMMIT:-Unknown}
 Build URL: ${BUILDKITE_BUILD_URL:-Unknown}"
 
-  # Get logs
+  # Get logs based on analysis level
   local log_file
-  log_file=$(get_build_logs "${max_log_lines}")
+  log_file=$(get_build_logs "${max_log_lines}" "${analysis_level}")
   local logs
   logs=$(< "${log_file}")
 
@@ -403,7 +507,11 @@ Build URL: ${BUILDKITE_BUILD_URL:-Unknown}"
 
   # Construct prompt
   local base_prompt
-  base_prompt="You are an expert software engineer and DevOps specialist. Please analyze this Buildkite step output and provide insights."
+  if [ "${analysis_level}" = "build" ]; then
+    base_prompt="You are an expert software engineer and DevOps specialist. Please analyze this Buildkite build output (containing logs from multiple jobs) and provide insights."
+  else
+    base_prompt="You are an expert software engineer and DevOps specialist. Please analyze this Buildkite step output and provide insights."
+  fi
   
   # Add agent context if available
   if [ -n "${agent_context}" ]; then
@@ -412,10 +520,33 @@ Build URL: ${BUILDKITE_BUILD_URL:-Unknown}"
 ${agent_context}"
   fi
 
-  base_prompt="${base_prompt}
+  # Build appropriate information section based on analysis level
+  if [ "${analysis_level}" = "build" ]; then
+    base_prompt="${base_prompt}
+
+Build Information:
+${build_info}
+Analysis Level: Full Build (multiple jobs)
+
+Build Logs (from multiple jobs):
+\`\`\`
+${logs}
+\`\`\`
+
+Please provide:
+1. **Analysis**: What happened in this build? $([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "Why did any jobs fail?" || echo "Any notable issues or warnings across jobs?")
+2. **Key Points**: Important information across all jobs and their significance
+3. **Problematic Jobs**: Identify which jobs had issues and summarize each problem
+4. **Recommendations**: $([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "Specific actionable steps to resolve the issues" || echo "Suggested improvements or optimizations")
+5. **Best Practices**: How to improve this build for the future
+
+Focus on being practical and actionable. If you see common patterns (dependency issues, test failures, configuration problems, etc.) across multiple jobs, highlight them clearly."
+  else
+    base_prompt="${base_prompt}
 
 Step Information:
 ${build_info}
+Analysis Level: Single Step
 Step: ${BUILDKITE_LABEL:-Unknown}
 Command: ${BUILDKITE_COMMAND:-Unknown}
 Exit Status: ${BUILDKITE_COMMAND_EXIT_STATUS:-Unknown}
@@ -432,6 +563,7 @@ Please provide:
 4. **Best Practices**: How to improve this step for the future
 
 Focus on being practical and actionable. If you see common patterns (dependency issues, test failures, configuration problems, etc.), highlight them clearly."
+  fi
 
   local full_prompt="${base_prompt}"
   if [ -n "${custom_prompt}" ]; then

@@ -5,6 +5,7 @@ if [[ -n "${BATS_TEST_FILENAME:-}" || -n "${BUILDKITE_PLUGIN_TESTER:-}" ]]; then
   # Get test-specific variables
   API_KEY="${BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY:-}"
   TRIGGER="${BUILDKITE_PLUGIN_CLAUDE_CODE_TRIGGER:-on-failure}"
+  ANALYSIS_LEVEL="${BUILDKITE_PLUGIN_CLAUDE_CODE_ANALYSIS_LEVEL:-step}"
   EXIT_STATUS="${BUILDKITE_COMMAND_EXIT_STATUS:-0}"
   ANNOTATE="${BUILDKITE_PLUGIN_CLAUDE_CODE_ANNOTATE:-true}"
   
@@ -18,6 +19,7 @@ if [[ -n "${BATS_TEST_FILENAME:-}" || -n "${BUILDKITE_PLUGIN_TESTER:-}" ]]; then
   echo "--- :robot_face: Claude Code Plugin (Post-Command)"
   echo "Model: ${BUILDKITE_PLUGIN_CLAUDE_CODE_MODEL:-claude-3-5-sonnet-20241022}"
   echo "Trigger: ${TRIGGER}"
+  echo "Analysis Level: ${ANALYSIS_LEVEL}"
   echo "Max log lines: ${BUILDKITE_PLUGIN_CLAUDE_CODE_MAX_LOG_LINES:-1000}"
   echo "Command completed with exit status: ${EXIT_STATUS}"
   
@@ -104,6 +106,7 @@ fi
 # Plugin configuration is loaded
 MODEL=$(plugin_read_config MODEL "claude-3-5-sonnet-20241022")
 TRIGGER=$(plugin_read_config TRIGGER "on-failure")
+ANALYSIS_LEVEL=$(plugin_read_config ANALYSIS_LEVEL "step")
 MAX_LOG_LINES=$(plugin_read_config MAX_LOG_LINES "1000")
 CUSTOM_PROMPT=$(plugin_read_config CUSTOM_PROMPT "")
 TIMEOUT=$(plugin_read_config TIMEOUT "60")
@@ -130,6 +133,7 @@ fi
 echo "--- :robot_face: Claude Code Plugin (Post-Command)"
 echo "Model: ${MODEL}"
 echo "Trigger: ${TRIGGER}"
+echo "Analysis Level: ${ANALYSIS_LEVEL}"
 echo "Max log lines: ${MAX_LOG_LINES}"
 
 # Get the command exit status from Buildkite
@@ -143,7 +147,7 @@ if should_trigger_analysis "${TRIGGER}" "${COMMAND_EXIT_STATUS}"; then
   
   # Perform analysis (disable exit on error temporarily)
   set +e
-  ANALYSIS=$(analyze_build_failure "${API_KEY}" "${MODEL}" "${MAX_LOG_LINES}" "${CUSTOM_PROMPT}" "${TIMEOUT}" "${AGENT_FILE}")
+  ANALYSIS=$(analyze_build_failure "${API_KEY}" "${MODEL}" "${MAX_LOG_LINES}" "${CUSTOM_PROMPT}" "${TIMEOUT}" "${AGENT_FILE}" "${ANALYSIS_LEVEL}")
   ANALYSIS_EXIT_CODE=$?
   set -e
   
@@ -158,9 +162,17 @@ if should_trigger_analysis "${TRIGGER}" "${COMMAND_EXIT_STATUS}"; then
       # Change style based on build status
       if [ "${COMMAND_EXIT_STATUS}" -ne 0 ]; then
         annotation_style="error"
-        annotation_title="Claude Step Failure Analysis"
+        if [ "${ANALYSIS_LEVEL}" = "build" ]; then
+          annotation_title="Claude Build Failure Analysis"
+        else
+          annotation_title="Claude Step Failure Analysis"
+        fi
       else
-        annotation_title="Claude Step Analysis"
+        if [ "${ANALYSIS_LEVEL}" = "build" ]; then
+          annotation_title="Claude Build Analysis"
+        else
+          annotation_title="Claude Step Analysis"
+        fi
       fi
       
       # Create a temp file for the annotation
@@ -172,12 +184,13 @@ if should_trigger_analysis "${TRIGGER}" "${COMMAND_EXIT_STATUS}"; then
 
 <div class="grid grid-cols-1 gap-4">
 
-### Step Information
+### $([ "${ANALYSIS_LEVEL}" = "build" ] && echo "Build" || echo "Step") Information
 <div class="bg-gray p-4 rounded-md mb-4">
   <p><strong>Pipeline:</strong> ${BUILDKITE_PIPELINE_SLUG:-Unknown}</p>
   <p><strong>Build:</strong> #${BUILDKITE_BUILD_NUMBER:-Unknown}</p>
-  <p><strong>Step:</strong> ${BUILDKITE_LABEL:-Unknown}</p>
-  <p><strong>Command:</strong> <code>${BUILDKITE_COMMAND:-Unknown}</code></p>
+  <p><strong>Analysis Level:</strong> ${ANALYSIS_LEVEL}</p>
+  $([ "${ANALYSIS_LEVEL}" = "step" ] && echo "  <p><strong>Step:</strong> ${BUILDKITE_LABEL:-Unknown}</p>")
+  $([ "${ANALYSIS_LEVEL}" = "step" ] && echo "  <p><strong>Command:</strong> <code>${BUILDKITE_COMMAND:-Unknown}</code></p>")
   <p><strong>Branch:</strong> ${BUILDKITE_BRANCH:-Unknown}</p>
   <p><strong>Exit Status:</strong> <span class="$([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "term-fgBrightRed" || echo "term-fgBrightGreen")">${BUILDKITE_COMMAND_EXIT_STATUS:-0}</span></p>
 </div>
