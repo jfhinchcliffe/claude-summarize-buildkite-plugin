@@ -40,6 +40,10 @@ configuration:
       type: boolean
       description: Whether to suggest potential fixes
       default: true
+    agent_file:
+      type: [boolean, string]
+      description: Include agent context file - true for AGENT.md, false to disable, or string path to custom file
+      default: false
     secret_name:
       type: string
       description: Name of Buildkite secret containing the Anthropic API key (alternative to api_key)

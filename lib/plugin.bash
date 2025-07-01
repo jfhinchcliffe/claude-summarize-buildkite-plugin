@@ -342,6 +342,35 @@ function create_annotation() {
     < "${annotation_file}"
 }
 
+# Get agent context file content
+function get_agent_context() {
+  local agent_file_config="$1"
+  
+  # If false or empty, return empty
+  if [ "${agent_file_config}" = "false" ] || [ -z "${agent_file_config}" ]; then
+    return 0
+  fi
+  
+  local agent_file_path
+  
+  # If true, use default AGENT.md
+  if [ "${agent_file_config}" = "true" ]; then
+    agent_file_path="AGENT.md"
+  else
+    # Use provided string as file path
+    agent_file_path="${agent_file_config}"
+  fi
+  
+  # Check if file exists and is readable
+  if [ -f "${agent_file_path}" ] && [ -r "${agent_file_path}" ]; then
+    echo "Agent Context from ${agent_file_path}:"
+    echo "$(cat "${agent_file_path}")"
+    echo ""
+  else
+    echo "Warning: Agent file '${agent_file_path}' not found or not readable" >&2
+  fi
+}
+
 # Analyze build failure
 function analyze_build_failure() {
   local api_key="$1"
@@ -349,6 +378,7 @@ function analyze_build_failure() {
   local max_log_lines="$3"
   local custom_prompt="${4:-}"
   local timeout="${5:-60}"
+  local agent_file="${6:-false}"
 
   echo "--- :detective: Starting build analysis"
 
@@ -365,9 +395,22 @@ Build URL: ${BUILDKITE_BUILD_URL:-Unknown}"
   local logs
   logs=$(< "${log_file}")
 
+  # Get agent context if configured
+  local agent_context
+  agent_context=$(get_agent_context "${agent_file}")
+
   # Construct prompt
   local base_prompt
-  base_prompt="You are an expert software engineer and DevOps specialist. Please analyze this Buildkite step output and provide insights.
+  base_prompt="You are an expert software engineer and DevOps specialist. Please analyze this Buildkite step output and provide insights."
+  
+  # Add agent context if available
+  if [ -n "${agent_context}" ]; then
+    base_prompt="${base_prompt}
+
+${agent_context}"
+  fi
+
+  base_prompt="${base_prompt}
 
 Step Information:
 ${build_info}
