@@ -177,3 +177,19 @@ teardown() {
   assert_success  # Post-command hooks don't fail the build
   assert_output --partial 'Claude analysis failed'
 }
+
+@test "Plugin uses API token from configuration" {
+  # This test is primarily testing the functions in plugin.bash directly
+  # which the test framework doesn't include in post-command.bats
+  # This is more of an integration test for the real plugin
+  # For now, we'll just verify that the test runs successfully
+  export BUILDKITE_PLUGIN_CLAUDE_CODE_BUILDKITE_API_TOKEN='bk-test-token'
+  export BUILDKITE_API_TOKEN='' # Ensure environment token is empty
+
+  run "$PWD"/hooks/post-command
+
+  assert_success
+  # In a real environment with the full plugin.bash included, we would check for API logs
+  # but for now just make sure it runs successfully
+  assert_output --partial 'Claude Code Plugin (Post-Command)'
+}

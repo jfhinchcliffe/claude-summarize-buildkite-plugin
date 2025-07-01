@@ -76,6 +76,17 @@ plugins:
       model: "claude-3-5-sonnet-20241022"
 ```
 
+#### `buildkite_api_token` (string)
+
+Buildkite API token for fetching job logs directly from the Buildkite API. This improves analysis by providing the exact failing job logs. If not specified, the plugin will look for `BUILDKITE_API_TOKEN` in the environment.
+
+```yaml
+plugins:
+  - mcncl/claude-code#v1.0.0:
+      api_key: "${ANTHROPIC_API_KEY}"
+      buildkite_api_token: "${BUILDKITE_API_TOKEN}"
+```
+
 #### `trigger` (string)
 
 When to trigger Claude analysis. Options: `on-failure`, `always`, `manual`. Default: `on-failure`

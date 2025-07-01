@@ -3,6 +3,19 @@ set -euo pipefail
 
 PLUGIN_PREFIX="CLAUDE_CODE"
 
+# Get the Buildkite API token from environment or plugin config
+function get_buildkite_api_token() {
+  # First check if a token was provided via plugin config
+  local config_token=$(plugin_read_config BUILDKITE_API_TOKEN "")
+  
+  # If not found in config, check environment variable
+  if [ -z "${config_token}" ]; then
+    echo "${BUILDKITE_API_TOKEN:-}"
+  else
+    echo "${config_token}"
+  fi
+}
+
 # Reads either a value or a list from the given env prefix
 function prefix_read_list() {
   local prefix="$1"
@@ -68,15 +81,38 @@ function get_build_logs() {
   echo "--- :mag: Fetching build logs" >&2
 
   # Method 1: Try Buildkite API if token and job ID are available
-  if [ -n "${BUILDKITE_API_TOKEN:-}" ] && [ -n "${BUILDKITE_JOB_ID:-}" ]; then
+  local api_token=$(get_buildkite_api_token)
+  if [ -n "${api_token}" ] && [ -n "${BUILDKITE_JOB_ID:-}" ]; then
     echo "Attempting to fetch logs via Buildkite API..." >&2
 
     local api_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}/jobs/${BUILDKITE_JOB_ID}/log"
 
-    if curl -s -f -H "Authorization: Bearer ${BUILDKITE_API_TOKEN}" "${api_url}" > "${log_file}.raw" 2>/dev/null; then
-      # Process the log content and take last N lines
-      tail -n "${max_lines}" "${log_file}.raw" > "${log_file}"
-      rm -f "${log_file}.raw"
+    if curl -s -f -H "Authorization: Bearer ${api_token}" "${api_url}" > "${log_file}.raw" 2>/dev/null; then
+      # Check if the response is JSON and extract content field
+      if grep -q '"content":' "${log_file}.raw" 2>/dev/null; then
+        if command -v jq >/dev/null 2>&1; then
+          # Extract content field from JSON response
+          jq -r '.content' "${log_file}.raw" > "${log_file}.content" 2>/dev/null
+          if [ -s "${log_file}.content" ]; then
+            # Process the extracted content and take last N lines
+            tail -n "${max_lines}" "${log_file}.content" > "${log_file}"
+            rm -f "${log_file}.raw" "${log_file}.content"
+          else
+            # Fallback if jq fails to extract content
+            tail -n "${max_lines}" "${log_file}.raw" > "${log_file}"
+            rm -f "${log_file}.raw" "${log_file}.content"
+          fi
+        else
+          # Fallback if jq is not available
+          echo "Warning: jq not available for JSON processing, using raw response" >&2
+          tail -n "${max_lines}" "${log_file}.raw" > "${log_file}"
+          rm -f "${log_file}.raw"
+        fi
+      else
+        # Not JSON or doesn't have content field, just take last N lines
+        tail -n "${max_lines}" "${log_file}.raw" > "${log_file}"
+        rm -f "${log_file}.raw"
+      fi
       echo "Successfully fetched logs via API (${max_lines} lines)" >&2
       echo "${log_file}"
       return 0
