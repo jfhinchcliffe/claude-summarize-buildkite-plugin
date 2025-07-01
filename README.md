@@ -51,41 +51,15 @@ Your Anthropic API key for accessing Claude. Store this securely in your Buildki
 
 Name of a Buildkite secret containing your Anthropic API key. The plugin will automatically fetch the secret using `buildkite-agent secret get`.
 
-```yaml
-# Option 1: Using environment variable
-plugins:
-  - mcncl/claude-code#v1.0.0:
-      api_key: "${ANTHROPIC_API_KEY}"
-
-# Option 2: Using Buildkite secrets
-plugins:
-  - mcncl/claude-code#v1.0.0:
-      secret_name: "ANTHROPIC_API_KEY"
-```
-
 ### Optional
 
 #### `model` (string)
 
 Claude model to use for analysis. Default: `claude-3-5-sonnet-20241022`
 
-```yaml
-plugins:
-  - mcncl/claude-code#v1.0.0:
-      api_key: "${ANTHROPIC_API_KEY}"
-      model: "claude-3-5-sonnet-20241022"
-```
-
 #### `buildkite_api_token` (string)
 
 Buildkite API token for fetching job logs directly from the Buildkite API. This improves analysis by providing the exact failing job logs. If not specified, the plugin will look for `BUILDKITE_API_TOKEN` in the environment.
-
-```yaml
-plugins:
-  - mcncl/claude-code#v1.0.0:
-      api_key: "${ANTHROPIC_API_KEY}"
-      buildkite_api_token: "${BUILDKITE_API_TOKEN}"
-```
 
 #### `trigger` (string)
 
@@ -95,56 +69,21 @@ When to trigger Claude analysis. Options: `on-failure`, `always`, `manual`. Defa
 - `always`: Analyze every build (success or failure)
 - `manual`: Only when `CLAUDE_ANALYZE=true` environment variable is set or commit message contains `[claude-analyze]`
 
-```yaml
-plugins:
-  - mcncl/claude-code#v1.0.0:
-      api_key: "${ANTHROPIC_API_KEY}"
-      trigger: "always"
-```
-
 #### `max_log_lines` (integer)
 
 Maximum number of log lines to send to Claude for analysis. Default: `1000`
-
-```yaml
-plugins:
-  - mcncl/claude-code#v1.0.0:
-      api_key: "${ANTHROPIC_API_KEY}"
-      max_log_lines: 500
-```
 
 #### `custom_prompt` (string)
 
 Additional context or instructions to include in the analysis prompt.
 
-```yaml
-plugins:
-  - mcncl/claude-code#v1.0.0:
-      api_key: "${ANTHROPIC_API_KEY}"
-      custom_prompt: "This is a Node.js project using Jest for testing. Pay special attention to dependency issues."
-```
-
 #### `timeout` (integer)
 
 Timeout in seconds for Claude API requests. Default: `60`
 
-```yaml
-plugins:
-  - mcncl/claude-code#v1.0.0:
-      api_key: "${ANTHROPIC_API_KEY}"
-      timeout: 120
-```
-
 #### `annotate` (boolean)
 
 Whether to create Buildkite annotations with the analysis results. Default: `true`
-
-```yaml
-plugins:
-  - mcncl/claude-code#v1.0.0:
-      api_key: "${ANTHROPIC_API_KEY}"
-      annotate: false  # Only output to build logs
-```
 
 #### `agent_file` (boolean or string)
 
@@ -153,18 +92,6 @@ Include project context from an agent file in the analysis. Default: `false`
 - `true`: Include `AGENT.md` from the repository root
 - `false`: Don't include any agent context
 - `"path/to/file.md"`: Include the specified file
-
-```yaml
-plugins:
-  - mcncl/claude-code#v1.0.0:
-      api_key: "${ANTHROPIC_API_KEY}"
-      agent_file: true  # Use AGENT.md
-
-  # Or specify a custom file
-  - mcncl/claude-code#v1.0.0:
-      api_key: "${ANTHROPIC_API_KEY}"
-      agent_file: "docs/build-context.md"
-```
 
 The agent file should contain project-specific context like architecture details, common issues, coding standards, or troubleshooting guides that help Claude provide more relevant analysis.
 
