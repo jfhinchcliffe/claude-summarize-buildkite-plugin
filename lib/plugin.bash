@@ -117,14 +117,12 @@ function get_build_logs() {
               
               if curl -s -f -H "Authorization: Bearer ${api_token}" "${job_details_url}" > "/tmp/job_${job_id}_details.json" 2>/dev/null; then
                 if command -v jq >/dev/null 2>&1; then
-                  job_name=$(jq -r '.name // "Job '${job_id}'"' "/tmp/job_${job_id}_details.json" 2>/dev/null)
+                  job_name=$(jq -r '.name // "Job '"${job_id}"'"' "/tmp/job_${job_id}_details.json" 2>/dev/null)
                 fi
               fi
               
               # Add a separator for this job
-              echo "\n========================================" >> "${log_file}"
-              echo "JOB: ${job_name} (${job_id})" >> "${log_file}"
-              echo "========================================\n" >> "${log_file}"
+              { printf "\n========================================"; echo "JOB: ${job_name} (${job_id})"; printf "========================================\n" } >> "${log_file}"
               
               # Fetch this job's logs
               if curl -s -f -H "Authorization: Bearer ${api_token}" "${job_url}" > "${job_log_file}.raw" 2>/dev/null; then
