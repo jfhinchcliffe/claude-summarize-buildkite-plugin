@@ -21,6 +21,7 @@ steps:
   - wait: ~
 
   - label: "🤖 AI Assessment"
+    command: "echo '🤖 AI Assessment'"
     plugins: 
       - https://github.com/mcncl/claude-code-buildkite-plugin#main:
           api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
