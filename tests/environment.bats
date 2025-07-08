@@ -30,7 +30,9 @@ teardown() {
 }
 
 @test "Environment hook resolves Buildkite secret syntax" {
-  export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY="$(buildkite-agent secret get TEST_SECRET)"
+  local api_key
+  api_key="$(buildkite-agent secret get TEST_SECRET)"
+  export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY="$api_key"
 
   # Source the environment hook instead of running it
   source "$PWD"/hooks/environment
@@ -72,7 +74,9 @@ teardown() {
 }
 
 @test "Environment hook handles missing Buildkite secret gracefully" {
-  export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY="$(buildkite-agent secret get MISSING_SECRET)"
+  local api_key
+  api_key="$(buildkite-agent secret get MISSING_SECRET)"
+  export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY="$api_key"
 
   # Source the environment hook instead of running it
   source "$PWD"/hooks/environment
@@ -82,7 +86,9 @@ teardown() {
 }
 
 @test "Environment hook handles empty Buildkite secret gracefully" {
-  export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY="$(buildkite-agent secret get EMPTY_SECRET)"
+  local api_key
+  api_key="$(buildkite-agent secret get EMPTY_SECRET)"
+  export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY="$api_key"
 
   # Source the environment hook instead of running it
   source "$PWD"/hooks/environment
@@ -113,7 +119,9 @@ teardown() {
 }
 
 @test "Environment hook handles buildkite-agent not available" {
-  export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY="$(buildkite-agent secret get TEST_SECRET)"
+  local api_key
+  api_key="$(buildkite-agent secret get TEST_SECRET)"
+  export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY="$api_key"
 
   # Override the stub to simulate buildkite-agent not being available
   teardown
@@ -157,7 +165,9 @@ teardown() {
 }
 
 @test "Environment hook ignores invalid command substitution patterns" {
-  export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY="$(invalid-command get TEST_SECRET)"
+  local api_key
+  api_key="$(invalid-command get TEST_SECRET)"
+  export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY="$api_key"
 
   # Source the environment hook instead of running it
   source "$PWD"/hooks/environment

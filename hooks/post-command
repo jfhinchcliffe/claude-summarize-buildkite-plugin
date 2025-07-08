@@ -119,6 +119,7 @@ COMPARISON_RANGE=$(plugin_read_config COMPARISON_RANGE "5")
 # API key validation already done above - no need to check again
 
 # Source validation functions
+# shellcheck disable=SC1091
 . "$DIR/../lib/validation.bash"
 
 # Validate required tools

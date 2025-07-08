@@ -77,7 +77,8 @@ function plugin_read_config() {
 function get_build_logs() {
   local max_lines="${1:-1000}"
   local analysis_level="${2:-step}"
-  local api_token="$(get_buildkite_api_token)"
+  local api_token
+  api_token="$(get_buildkite_api_token)"
   
   # Call the refactored implementation
   fetch_build_logs "${api_token}" "${max_lines}" "${analysis_level}"

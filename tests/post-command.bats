@@ -199,7 +199,7 @@ teardown() {
 @test "Plugin works with environment variable API key format" {
   # Test that the new unified API key configuration works with environment variables
   export TEST_API_KEY='sk-ant-env-test-key'
-  export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY='${TEST_API_KEY}'
+  export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY="${TEST_API_KEY}"
 
   run "$PWD"/hooks/post-command
 
@@ -210,7 +210,9 @@ teardown() {
 
 @test "Plugin works with Buildkite secret API key format" {
   # Test that the new unified API key configuration works with Buildkite secrets
-  export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY='$(buildkite-agent secret get ANTHROPIC_API_KEY)'
+  local api_key
+  api_key="$(buildkite-agent secret get ANTHROPIC_API_KEY)"
+  export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY="$api_key"
 
   run "$PWD"/hooks/post-command
 

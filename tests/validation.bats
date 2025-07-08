@@ -63,7 +63,8 @@ setup() {
 
 @test "Validate tools succeeds with available tools" {
   # Mock commands
-  function command() {
+  # shellcheck disable=SC2317
+  command() {
     return 0
   }
   
@@ -75,7 +76,8 @@ setup() {
 
 @test "Validate tools fails when curl is missing" {
   # Mock commands
-  function command() {
+  # shellcheck disable=SC2317
+  command() {
     if [[ "$*" == *"curl"* ]]; then
       return 1
     fi
@@ -90,7 +92,8 @@ setup() {
 
 @test "Validate tools fails when jq is missing" {
   # Mock commands
-  function command() {
+  # shellcheck disable=SC2317
+  command() {
     if [[ "$*" == *"jq"* ]]; then
       return 1
     fi
