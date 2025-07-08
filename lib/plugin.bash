@@ -5,10 +5,9 @@ PLUGIN_PREFIX="CLAUDE_CODE"
 
 # Get the Buildkite API token from environment or plugin config
 function get_buildkite_api_token() {
-  # First check if a token was provided via plugin config
   local config_token=""
   config_token=$(plugin_read_config BUILDKITE_API_TOKEN "")
-  
+
   # If not found in config, check environment variable
   if [ -z "${config_token}" ]; then
     echo "${BUILDKITE_API_TOKEN:-}"
@@ -74,248 +73,14 @@ function plugin_read_config() {
   echo "${!var:-$default}"
 }
 
-# Get build logs from Buildkite API or fallback methods
+# Source log handling functions from lib/logs.bash
 function get_build_logs() {
-  local api_token=""
   local max_lines="${1:-1000}"
   local analysis_level="${2:-step}"
-  local log_file="/tmp/buildkite_logs_${BUILDKITE_BUILD_ID}.txt"
-
-  echo "--- :mag: Fetching build logs (level: ${analysis_level})" >&2
-
-  # For build-level analysis, try to get all jobs in the build
-  if [ "${analysis_level}" = "build" ]; then
-    # Try to get all jobs for the build
-    api_token=$(get_buildkite_api_token)
-    if [ -n "${api_token}" ]; then
-      echo "Attempting to fetch logs for all jobs in build via Buildkite API..." >&2
-      
-      # First, get the build to find all jobs
-      local build_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}"
-      
-      if curl -s -f -H "Authorization: Bearer ${api_token}" "${build_url}" > "/tmp/build_${BUILDKITE_BUILD_ID}.json" 2>/dev/null; then
-        # Extract job IDs from the build
-        if command -v jq >/dev/null 2>&1; then
-          local job_ids
-          job_ids=$(jq -r '.jobs[].id' "/tmp/build_${BUILDKITE_BUILD_ID}.json" 2>/dev/null)
-          
-          if [ -n "${job_ids}" ]; then
-            echo "Found jobs in build: $(echo "${job_ids}" | wc -l)" >&2
-            
-            # Create a combined log file
-            : > "${log_file}"
-            
-            # Process each job
-            local job_count=0
-            for job_id in ${job_ids}; do  # Word splitting is intentional here
-              local job_log_file="/tmp/job_${job_id}_logs.txt"
-              local job_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}/jobs/${job_id}/log"
-              
-              # Get job details for header
-              local job_details_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}/jobs/${job_id}"
-              local job_name="Job ${job_id}"
-              
-              if curl -s -f -H "Authorization: Bearer ${api_token}" "${job_details_url}" > "/tmp/job_${job_id}_details.json" 2>/dev/null; then
-                if command -v jq >/dev/null 2>&1; then
-                  job_name=$(jq -r '.name // "Job '"${job_id}"'"' "/tmp/job_${job_id}_details.json" 2>/dev/null)
-                fi
-              fi
-              
-              # Add a separator for this job
-              { printf "\n========================================"; echo "JOB: ${job_name} (${job_id})"; printf "========================================\n"; } >> "${log_file}"
-              
-              # Fetch this job's logs
-              if curl -s -f -H "Authorization: Bearer ${api_token}" "${job_url}" > "${job_log_file}.raw" 2>/dev/null; then
-                # Process the log similar to the step-level function
-                if grep -q '"content":' "${job_log_file}.raw" 2>/dev/null; then
-                  if command -v jq >/dev/null 2>&1; then
-                    jq -r '.content' "${job_log_file}.raw" > "${job_log_file}" 2>/dev/null
-                    if [ ! -s "${job_log_file}" ]; then
-                      # Fallback if jq fails
-                      cat "${job_log_file}.raw" > "${job_log_file}"
-                    fi
-                  else
-                    # Fallback if jq is not available
-                    cat "${job_log_file}.raw" > "${job_log_file}"
-                  fi
-                else
-                  # Not JSON, use as is
-                  cat "${job_log_file}.raw" > "${job_log_file}"
-                fi
-                
-                # Append logs to the combined file (last N lines)
-                if [ -s "${job_log_file}" ]; then
-                  # Calculate lines per job based on the total max and job count
-                  # For simplicity we'll use max_lines/10 lines per job with a minimum of 100
-                  local lines_per_job=$((max_lines / 10))
-                  if [ "${lines_per_job}" -lt 100 ]; then
-                    lines_per_job=100
-                  fi
-                  
-                  tail -n "${lines_per_job}" "${job_log_file}" >> "${log_file}"
-                  job_count=$((job_count + 1))
-                fi
-                
-                # Clean up
-                rm -f "${job_log_file}.raw" "${job_log_file}"
-              else
-                echo "Warning: Failed to fetch logs for job ${job_id}" >&2
-                echo "Could not fetch logs for this job." >> "${log_file}"
-              fi
-              
-              rm -f "/tmp/job_${job_id}_details.json"
-            done
-            
-            if [ "${job_count}" -gt 0 ]; then
-              echo "Successfully fetched logs for ${job_count} jobs" >&2
-              echo "${log_file}"
-              return 0
-            fi
-          fi
-        fi
-        
-        rm -f "/tmp/build_${BUILDKITE_BUILD_ID}.json"
-      else
-        echo "Warning: Failed to fetch build details from API" >&2
-      fi
-    fi
-    
-    echo "Warning: Could not get build-level logs, falling back to step-level" >&2
-  fi
+  local api_token="$(get_buildkite_api_token)"
   
-  # Method 1: Try Buildkite API if token and job ID are available (step-level analysis)
-  api_token=$(get_buildkite_api_token)
-  if [ -n "${api_token}" ] && [ -n "${BUILDKITE_JOB_ID:-}" ]; then
-    echo "Attempting to fetch logs via Buildkite API..." >&2
-
-    local api_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}/jobs/${BUILDKITE_JOB_ID}/log"
-
-    if curl -s -f -H "Authorization: Bearer ${api_token}" "${api_url}" > "${log_file}.raw" 2>/dev/null; then
-      # Check if the response is JSON and extract content field
-      if grep -q '"content":' "${log_file}.raw" 2>/dev/null; then
-        if command -v jq >/dev/null 2>&1; then
-          # Extract content field from JSON response
-          jq -r '.content' "${log_file}.raw" > "${log_file}.content" 2>/dev/null
-          if [ -s "${log_file}.content" ]; then
-            # Process the extracted content and take last N lines
-            tail -n "${max_lines}" "${log_file}.content" > "${log_file}"
-            rm -f "${log_file}.raw" "${log_file}.content"
-          else
-            # Fallback if jq fails to extract content
-            tail -n "${max_lines}" "${log_file}.raw" > "${log_file}"
-            rm -f "${log_file}.raw" "${log_file}.content"
-          fi
-        else
-          # Fallback if jq is not available
-          echo "Warning: jq not available for JSON processing, using raw response" >&2
-          tail -n "${max_lines}" "${log_file}.raw" > "${log_file}"
-          rm -f "${log_file}.raw"
-        fi
-      else
-        # Not JSON or doesn't have content field, just take last N lines
-        tail -n "${max_lines}" "${log_file}.raw" > "${log_file}"
-        rm -f "${log_file}.raw"
-      fi
-      echo "Successfully fetched logs via API (${max_lines} lines)" >&2
-      echo "${log_file}"
-      return 0
-    else
-      echo "Warning: Failed to fetch logs via API" >&2
-    fi
-  fi
-
-  # Method 2: Try to use Buildkite agent env vars for basic information
-  if command -v buildkite-agent >/dev/null 2>&1; then
-    echo "Collecting information from buildkite-agent environment..." >&2
-
-    # Create a basic log using Buildkite environment variables
-    {
-      echo "Build Information from Agent Environment:"
-      echo "- Pipeline: ${BUILDKITE_PIPELINE_SLUG:-Unknown}"
-      echo "- Build: #${BUILDKITE_BUILD_NUMBER:-Unknown}"
-      echo "- Job: ${BUILDKITE_LABEL:-Unknown}"
-      echo "- Branch: ${BUILDKITE_BRANCH:-Unknown}"
-      echo "- Commit: ${BUILDKITE_COMMIT:-Unknown}"
-      echo "- Exit Status: ${BUILDKITE_COMMAND_EXIT_STATUS:-Unknown}"
-      echo "- Command: ${BUILDKITE_COMMAND:-Unknown}"
-      echo "- Working Directory: $(pwd)"
-      echo ""
-      echo "Note: Step logs cannot be directly accessed via buildkite-agent."
-    } > "${log_file}"
-
-    if [ -s "${log_file}" ]; then
-      echo "Created log summary from buildkite-agent environment" >&2
-      echo "${log_file}"
-      return 0
-    fi
-
-    echo "Warning: Failed to create log summary from buildkite-agent" >&2
-  fi
-
-  # Method 3: Try to read from common log locations
-  echo "Attempting to find logs in common locations..." >&2
-
-  local potential_logs=(
-    "/tmp/buildkite-agent.log"
-    "${BUILDKITE_BUILD_CHECKOUT_PATH:-/tmp}/buildkite.log"
-    "/var/log/buildkite-agent/buildkite-agent.log"
-    "${HOME}/.buildkite-agent/buildkite-agent.log"
-    "/opt/homebrew/var/log/buildkite-agent.log"
-  )
-
-  # Try journalctl for systems using systemd
-  if command -v journalctl >/dev/null 2>&1; then
-    echo "Attempting to get logs from journalctl..." >&2
-    if journalctl -u buildkite-agent -n "${max_lines}" > "${log_file}.journal" 2>/dev/null; then
-      if [ -s "${log_file}.journal" ]; then
-        mv "${log_file}.journal" "${log_file}"
-        echo "Successfully captured logs from journalctl (${max_lines} lines)" >&2
-        echo "${log_file}"
-        return 0
-      fi
-      rm -f "${log_file}.journal"
-    fi
-  fi
-
-  for log_path in "${potential_logs[@]}"; do
-    if [ -f "${log_path}" ] && [ -r "${log_path}" ]; then
-      echo "Found log file: ${log_path}" >&2
-      tail -n "${max_lines}" "${log_path}" > "${log_file}" 2>/dev/null
-      if [ -s "${log_file}" ]; then
-        echo "Successfully captured logs from ${log_path} (${max_lines} lines)" >&2
-        echo "${log_file}"
-        return 0
-      fi
-    fi
-  done
-
-  # Method 4: Fallback - create a basic log with available information
-  echo "Warning: Could not retrieve detailed logs, creating summary with available information" >&2
-
-  {
-    echo "Build Information Summary:"
-    echo "- Pipeline: ${BUILDKITE_PIPELINE_SLUG:-Unknown}"
-    echo "- Build: #${BUILDKITE_BUILD_NUMBER:-Unknown}"
-    echo "- Job: ${BUILDKITE_LABEL:-Unknown}"
-    echo "- Branch: ${BUILDKITE_BRANCH:-Unknown}"
-    echo "- Commit: ${BUILDKITE_COMMIT:-Unknown}"
-    echo "- Exit Status: ${BUILDKITE_COMMAND_EXIT_STATUS:-Unknown}"
-    echo "- Build URL: ${BUILDKITE_BUILD_URL:-Unknown}"
-    echo ""
-    echo "Note: Detailed logs could not be retrieved. This may be due to:"
-    echo "- Missing BUILDKITE_API_TOKEN environment variable"
-    echo "- Insufficient permissions to access logs"
-    echo "- Log files not available in expected locations"
-    echo ""
-    echo "To improve log analysis, ensure:"
-    echo "1. BUILDKITE_API_TOKEN is set with appropriate permissions"
-    echo "2. The buildkite-agent has access to log files"
-    echo "3. The plugin runs in the same environment as the failed command"
-  } > "${log_file}"
-
-  echo "Created fallback log summary" >&2
-  echo "${log_file}"
-  return 0
+  # Call the refactored implementation
+  fetch_build_logs "${api_token}" "${max_lines}" "${analysis_level}"
 }
 
 # Call Claude API for analysis
@@ -335,6 +100,13 @@ function call_claude_api() {
     echo "Using existing response file for testing"
     return 0
   fi
+  
+  # Check if we can reach the API endpoint
+  if ! curl -s --max-time 5 -o /dev/null https://api.anthropic.com/v1/ping; then
+    echo "Error: Cannot reach Anthropic API. Please check your network connectivity." >&2
+    echo "Error: Network connectivity issue - cannot reach Anthropic API" > "${response_file}"
+    return 1
+  fi
 
   # Initialize debug file
   echo "Claude API Debug Log" > "${debug_file}"
@@ -344,10 +116,10 @@ function call_claude_api() {
   # Prepare the API request
   local prompt_file="/tmp/claude_prompt_${BUILDKITE_BUILD_ID}.txt"
   local payload_file="/tmp/claude_payload_${BUILDKITE_BUILD_ID}.json"
-  
+
   # Write prompt to file
   echo "$prompt" > "${prompt_file}"
-  
+
   # Create JSON payload file using jq with rawfile
   jq -n \
     --arg model "$model" \
@@ -377,7 +149,7 @@ function call_claude_api() {
   if [ "${http_code}" -ne 200 ]; then
     echo "Claude API call failed with HTTP code ${http_code}" >&2
   fi
-  
+
   # Return the response file path
   echo "${response_file}"
 }
@@ -459,56 +231,56 @@ function get_build_history() {
   local analysis_level="${3:-step}"
   local current_build_number="${BUILDKITE_BUILD_NUMBER}"
   local current_step_key="${BUILDKITE_STEP_KEY:-}"
-  
+
   echo "--- :chart_with_upwards_trend: Fetching historical data for ${comparison_range} builds (level: ${analysis_level})" >&2
-  
+
   if [ -z "${api_token}" ]; then
     echo "Warning: No API token available for build history comparison" >&2
     return 1
   fi
-  
+
   local builds_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds"
   local history_file="/tmp/build_history_${BUILDKITE_BUILD_ID}.json"
-  
+
   # For step-level comparison, we need to track job-specific info
   if [ "${analysis_level}" = "step" ] && [ -n "${current_step_key}" ]; then
     echo "Fetching step-level comparison data for step key: ${current_step_key}" >&2
     local step_history_file="/tmp/step_history_${BUILDKITE_BUILD_ID}.json"
-    
+
     # Fetch recent builds (get more than needed to filter out current build)
     local fetch_count=$((comparison_range + 15))
     if curl -s -f -H "Authorization: Bearer ${api_token}" "${builds_url}?per_page=${fetch_count}&finished_from=$(date -d '30 days ago' '+%Y-%m-%d')" > "${history_file}.raw" 2>/dev/null; then
       if command -v jq >/dev/null 2>&1; then
         # Filter out current build and get the requested number of previous builds
         jq --arg current_build "${current_build_number}" '
-          [.[] | select(.number != ($current_build | tonumber) and .state == "finished")] 
-          | sort_by(.number) 
+          [.[] | select(.number != ($current_build | tonumber) and .state == "finished")]
+          | sort_by(.number)
           | reverse' "${history_file}.raw" > "${history_file}" 2>/dev/null
-        
+
         # Process each build to extract step information
         echo "[]" > "${step_history_file}"
         local count=0
         local build_numbers=""
         build_numbers=$(jq -r '.[].number' "${history_file}" 2>/dev/null)
-        
+
         for build_number in ${build_numbers}; do
           # Get details for this build
           local build_url="${builds_url}/${build_number}"
           local build_detail_file="/tmp/build_${build_number}_${BUILDKITE_BUILD_ID}.json"
-          
+
           if curl -s -f -H "Authorization: Bearer ${api_token}" "${build_url}" > "${build_detail_file}" 2>/dev/null; then
             # Extract job with matching step_key
             local job_info
             job_info=$(jq --arg step_key "${current_step_key}" '.jobs[] | select(.step_key == $step_key)' "${build_detail_file}" 2>/dev/null)
-            
+
             if [ -n "${job_info}" ] && [ "${job_info}" != "null" ]; then
               # Add build number to the job info
               job_info=$(echo "${job_info}" | jq --arg build_number "${build_number}" '. + {build_number: $build_number}')
-              
+
               # Append to our step history file
               jq -n --argjson current "$(cat "${step_history_file}")" --argjson job "${job_info}" '$current + [$job]' > "${step_history_file}.tmp" 2>/dev/null
               mv "${step_history_file}.tmp" "${step_history_file}"
-              
+
               count=$((count + 1))
               if [ "${count}" -ge "${comparison_range}" ]; then
                 break
@@ -517,7 +289,7 @@ function get_build_history() {
             rm -f "${build_detail_file}"
           fi
         done
-        
+
         if [ "${count}" -gt 0 ]; then
           echo "Successfully fetched step-level history for ${count} previous builds" >&2
           echo "${step_history_file}"
@@ -527,10 +299,10 @@ function get_build_history() {
         fi
       fi
     fi
-    
+
     echo "Warning: Falling back to build-level comparison" >&2
   fi
-  
+
   # Build-level comparison (default fallback)
   local fetch_count=$((comparison_range + 10))
   if curl -s -f -H "Authorization: Bearer ${api_token}" "${builds_url}?per_page=${fetch_count}&finished_from=$(date -d '30 days ago' '+%Y-%m-%d')" > "${history_file}" 2>/dev/null; then
@@ -538,11 +310,11 @@ function get_build_history() {
       # Filter out current build and get the requested number of previous builds
       local filtered_builds
       filtered_builds=$(jq --arg current_build "${current_build_number}" '
-        [.[] | select(.number != ($current_build | tonumber) and .state == "finished")] 
-        | sort_by(.number) 
-        | reverse 
+        [.[] | select(.number != ($current_build | tonumber) and .state == "finished")]
+        | sort_by(.number)
+        | reverse
         | .[:'"${comparison_range}"']' "${history_file}" 2>/dev/null)
-      
+
       if [ -n "${filtered_builds}" ] && [ "${filtered_builds}" != "[]" ]; then
         echo "${filtered_builds}" > "${history_file}"
         echo "Successfully fetched build-level history for comparison" >&2
@@ -551,7 +323,7 @@ function get_build_history() {
       fi
     fi
   fi
-  
+
   echo "Warning: Could not fetch build history for comparison" >&2
   return 1
 }
@@ -562,19 +334,19 @@ function analyze_build_times() {
   local current_build_time="$2"
   local analysis_level="${3:-build}"
   local step_key="${4:-}"
-  
+
   if [ ! -f "${history_file}" ] || ! command -v jq >/dev/null 2>&1; then
     return 1
   fi
-  
+
   local analysis_file="/tmp/build_time_analysis_${BUILDKITE_BUILD_ID}.txt"
   local is_step_level=false
-  
+
   # Check if this is step-level analysis with step history
   if [ "${analysis_level}" = "step" ] && [ -n "${step_key}" ] && grep -q "step_key" "${history_file}" 2>/dev/null; then
     is_step_level=true
   fi
-  
+
   {
     if [ "${is_step_level}" = "true" ]; then
       echo "Step Time Comparison Analysis:"
@@ -585,15 +357,15 @@ function analyze_build_times() {
       echo "Current Build: #${BUILDKITE_BUILD_NUMBER} (${current_build_time}s)"
     fi
     echo ""
-    
+
     if [ "${is_step_level}" = "true" ]; then
       echo "Recent Step History:"
       # Format step-specific information
       jq -r '.[] | "Build #\(.build_number): \(.finished_at | fromdateiso8601 - (.started_at | fromdateiso8601))s (\(.state)) - \(.name // "Unknown step")"' "${history_file}" 2>/dev/null
-      
+
       echo ""
       echo "Step Time Statistics:"
-      
+
       # Calculate average, min, max for steps
       local times
       times=$(jq -r '.[] | (.finished_at | fromdateiso8601) - (.started_at | fromdateiso8601)' "${history_file}" 2>/dev/null)
@@ -601,27 +373,27 @@ function analyze_build_times() {
       echo "Recent Build History:"
       # Format build information
       jq -r '.[] | "Build #\(.number): \(.finished_at | fromdateiso8601 - (.started_at | fromdateiso8601))s (\(.state)) - \(.message // "No message" | .[0:60])"' "${history_file}" 2>/dev/null
-      
+
       echo ""
       echo "Build Time Statistics:"
-      
+
       # Calculate average, min, max for builds
       local times
       times=$(jq -r '.[] | (.finished_at | fromdateiso8601) - (.started_at | fromdateiso8601)' "${history_file}" 2>/dev/null)
     fi
-    
+
     if [ -n "${times}" ]; then
       local avg min max count
       avg=$(echo "${times}" | awk '{sum+=$1} END {printf "%.0f", sum/NR}')
       min=$(echo "${times}" | sort -n | head -1)
       max=$(echo "${times}" | sort -n | tail -1)
       count=$(echo "${times}" | wc -l)
-      
+
       echo "- Average: ${avg}s (over ${count} $([ "${is_step_level}" = "true" ] && echo "steps" || echo "builds"))"
       echo "- Fastest: ${min}s"
       echo "- Slowest: ${max}s"
       echo "- Current vs Average: $((current_build_time - avg))s difference"
-      
+
       # Trend analysis
       if [ "${current_build_time}" -gt $((avg + 60)) ]; then
         echo "- Trend: ⚠️  Current $([ "${is_step_level}" = "true" ] && echo "step" || echo "build") is significantly slower than average"
@@ -632,7 +404,7 @@ function analyze_build_times() {
       else
         echo "- Trend: ✅ Current $([ "${is_step_level}" = "true" ] && echo "step" || echo "build") time is normal"
       fi
-      
+
       # Add step-specific analysis if available
       if [ "${is_step_level}" = "true" ]; then
         echo ""
@@ -643,7 +415,7 @@ function analyze_build_times() {
       fi
     fi
   } > "${analysis_file}"
-  
+
   echo "${analysis_file}"
   return 0
 }
@@ -651,14 +423,14 @@ function analyze_build_times() {
 # Get agent context file content
 function get_agent_context() {
   local agent_file_config="$1"
-  
+
   # If false or empty, return empty
   if [ "${agent_file_config}" = "false" ] || [ -z "${agent_file_config}" ]; then
     return 0
   fi
-  
+
   local agent_file_path
-  
+
   # If true, use default AGENT.md
   if [ "${agent_file_config}" = "true" ]; then
     agent_file_path="AGENT.md"
@@ -666,7 +438,7 @@ function get_agent_context() {
     # Use provided string as file path
     agent_file_path="${agent_file_config}"
   fi
-  
+
   # Check if file exists and is readable
   if [ -f "${agent_file_path}" ] && [ -r "${agent_file_path}" ]; then
     echo "Using ${agent_file_path}:"
@@ -699,32 +471,32 @@ Build URL: ${BUILDKITE_BUILD_URL:-Unknown}"
   local current_build_time=""
   local build_time_analysis=""
   local current_time_note=""
-  
+
   # Get timing information via API if token is available
   local api_token
   api_token=$(get_buildkite_api_token)
-  
+
   if [ -n "${api_token}" ]; then
     # For step-level analysis, try to get step timing from API
     if [ "${analysis_level}" = "step" ] && [ -n "${BUILDKITE_JOB_ID:-}" ]; then
       echo "Fetching step timing data via API..." >&2
       local job_details_file="/tmp/job_${BUILDKITE_JOB_ID}_timing.json"
       local job_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}/jobs/${BUILDKITE_JOB_ID}"
-      
+
       if curl -s -f -H "Authorization: Bearer ${api_token}" "${job_url}" > "${job_details_file}" 2>/dev/null; then
         if command -v jq >/dev/null 2>&1; then
           # Calculate step time from API response
           local started_at finished_at
           started_at=$(jq -r '.started_at // empty' "${job_details_file}" 2>/dev/null)
           finished_at=$(jq -r '.finished_at // empty' "${job_details_file}" 2>/dev/null)
-          
+
           if [ -n "${started_at}" ] && [ -n "${finished_at}" ] && [ "${finished_at}" != "null" ]; then
             # Calculate time difference
             if command -v date >/dev/null 2>&1; then
               local start_epoch finish_epoch
               start_epoch=$(date -d "${started_at}" +%s 2>/dev/null || echo "")
               finish_epoch=$(date -d "${finished_at}" +%s 2>/dev/null || echo "")
-              
+
               if [ -n "${start_epoch}" ] && [ -n "${finish_epoch}" ]; then
                 current_build_time=$((finish_epoch - start_epoch))
                 build_info="${build_info}
@@ -737,7 +509,7 @@ Step Duration: ${current_build_time}s"
               local start_epoch now_epoch
               start_epoch=$(date -d "${started_at}" +%s 2>/dev/null || echo "")
               now_epoch=$(date +%s)
-              
+
               if [ -n "${start_epoch}" ]; then
                 current_build_time=$((now_epoch - start_epoch))
                 build_info="${build_info}
@@ -754,21 +526,21 @@ Step Duration (so far): ${current_build_time}s"
       echo "Fetching build timing data via API..." >&2
       local build_details_file="/tmp/build_${BUILDKITE_BUILD_NUMBER}_timing.json"
       local build_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}"
-      
+
       if curl -s -f -H "Authorization: Bearer ${api_token}" "${build_url}" > "${build_details_file}" 2>/dev/null; then
         if command -v jq >/dev/null 2>&1; then
           # Calculate build time from API response
           local started_at finished_at
           started_at=$(jq -r '.started_at // empty' "${build_details_file}" 2>/dev/null)
           finished_at=$(jq -r '.finished_at // empty' "${build_details_file}" 2>/dev/null)
-          
+
           if [ -n "${started_at}" ] && [ -n "${finished_at}" ] && [ "${finished_at}" != "null" ]; then
             # Calculate time difference for completed build
             if command -v date >/dev/null 2>&1; then
               local start_epoch finish_epoch
               start_epoch=$(date -d "${started_at}" +%s 2>/dev/null || echo "")
               finish_epoch=$(date -d "${finished_at}" +%s 2>/dev/null || echo "")
-              
+
               if [ -n "${start_epoch}" ] && [ -n "${finish_epoch}" ]; then
                 current_build_time=$((finish_epoch - start_epoch))
                 build_info="${build_info}
@@ -781,7 +553,7 @@ Build Duration: ${current_build_time}s"
               local start_epoch now_epoch
               start_epoch=$(date -d "${started_at}" +%s 2>/dev/null || echo "")
               now_epoch=$(date +%s)
-              
+
               if [ -n "${start_epoch}" ]; then
                 current_build_time=$((now_epoch - start_epoch))
                 build_info="${build_info}
@@ -829,7 +601,7 @@ Build Duration (so far): ${current_build_time}s"
   else
     base_prompt="You are an expert software engineer and DevOps specialist. Please analyze this Buildkite step output and provide insights."
   fi
-  
+
   # Add agent context if available
   if [ -n "${agent_context}" ]; then
     base_prompt="${base_prompt}
@@ -842,7 +614,7 @@ ${agent_context}"
     base_prompt="${base_prompt}
 
 ${build_time_analysis}"
-    
+
     # Add timing note if build is still running
     if [ -n "${current_time_note}" ]; then
       base_prompt="${base_prompt}

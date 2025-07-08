@@ -90,6 +90,8 @@ DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 
 # shellcheck source=lib/plugin.bash
 . "$DIR/../lib/plugin.bash"
+# shellcheck source=lib/logs.bash
+. "$DIR/../lib/logs.bash"
 
 # Read plugin configuration
 API_KEY=$(plugin_read_config API_KEY "")
@@ -97,9 +99,8 @@ API_KEY=$(plugin_read_config API_KEY "")
 API_KEY=$(echo "$API_KEY" | tr -d '[:space:]')
 
 # If API_KEY is still not set, this means it wasn't provided directly or via the environment hook
-# We'll log an error but continue to allow the build to proceed
 if [ -z "${API_KEY}" ]; then
-  echo "❌ Error: No API key available. Set either api_key or secret_name in your plugin configuration."
+  echo "❌ Error: api_key is required for Claude Code plugin"
   exit 1
 fi
 
@@ -115,22 +116,16 @@ AGENT_FILE=$(plugin_read_config AGENT_FILE "false")
 COMPARE_BUILDS=$(plugin_read_config COMPARE_BUILDS "false")
 COMPARISON_RANGE=$(plugin_read_config COMPARISON_RANGE "5")
 
-# Validate required configuration
-if [ -z "${API_KEY}" ]; then
-  echo "❌ Error: api_key is required for Claude Code plugin"
-  exit 1
-fi
+# API key validation already done above - no need to check again
 
-# Check for required tools
-if ! command -v curl >/dev/null 2>&1; then
-  echo "❌ Error: curl is required but not installed"
-  exit 1
-fi
+# Source validation functions
+. "$DIR/../lib/validation.bash"
 
-if ! command -v jq >/dev/null 2>&1; then
-  echo "❌ Error: jq is required but not installed"
-  exit 1
-fi
+# Validate required tools
+validate_tools || exit 1
+
+# Validate configuration
+validate_configuration "${API_KEY}" "${MODEL}" "${TRIGGER}" "${ANALYSIS_LEVEL}" "${COMPARE_BUILDS}" "$(plugin_read_config BUILDKITE_API_TOKEN "")" || exit 1
 
 echo "--- :robot_face: Claude Code Plugin (Post-Command)"
 echo "Model: ${MODEL}"
@@ -143,6 +138,9 @@ echo "Max log lines: ${MAX_LOG_LINES}"
 COMMAND_EXIT_STATUS="${BUILDKITE_COMMAND_EXIT_STATUS:-0}"
 
 echo "Command completed with exit status: ${COMMAND_EXIT_STATUS}"
+
+# Add a progress indicator for better UX
+echo "--- :gear: Preparing Claude analysis"
 
 # Check if we should trigger Claude analysis
 if should_trigger_analysis "${TRIGGER}" "${COMMAND_EXIT_STATUS}"; then
@@ -235,7 +233,7 @@ ANNOTATION
     fi
 
   # Check if analysis was successful
-  if [ -n "${ANALYSIS}" ] && [ "${ANALYSIS}" != "Error: Response file not found or inaccessible" ] && [ "${ANALYSIS}" != "Error: Could not parse Claude response. See logs for details." ]; then
+  if [ -n "${ANALYSIS}" ] && [[ ! "${ANALYSIS}" =~ ^Error: ]]; then
     echo "--- :brain: Claude Analysis Complete (See Annotation)"
   else
     echo "--- :warning: Claude analysis failed"

@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -o pipefail
 
 # Load plugin bash library
 DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
@@ -8,23 +8,70 @@ DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 
 # Get configuration
 API_KEY=$(plugin_read_config API_KEY "")
-SECRET_NAME=$(plugin_read_config SECRET_NAME "")
 
-# If API_KEY is not set directly but SECRET_NAME is provided, fetch it
-if [[ -z "$API_KEY" && -n "$SECRET_NAME" ]]; then
-  echo "--- 🔑 Fetching API key from secret: $SECRET_NAME"
-  
-  if command -v buildkite-agent >/dev/null 2>&1; then
-    API_KEY=$(buildkite-agent secret get "$SECRET_NAME")
-    if [[ -n "$API_KEY" ]]; then
-      # Export the API key for the plugin to use
-      export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY="$API_KEY"
-      echo "Successfully fetched API key from secret"
+# Function to resolve API key from various formats
+resolve_api_key() {
+  local key_value="$1"
+  local resolved=""
+
+  # Check if it's a command substitution pattern: $(buildkite-agent secret get SECRET_NAME)
+  if [[ "$key_value" =~ ^\$\(buildkite-agent[[:space:]]+secret[[:space:]]+get[[:space:]]+(.+)\)$ ]]; then
+    local secret_name="${BASH_REMATCH[1]}"
+    echo "--- 🔑 Fetching API key from secret: $secret_name" >&2
+
+    if command -v buildkite-agent >/dev/null 2>&1; then
+      if resolved=$(buildkite-agent secret get "$secret_name" 2>/dev/null) && [[ -n "$resolved" ]]; then
+        echo "Successfully fetched API key from secret" >&2
+        echo "$resolved"
+        return 0
+      else
+        echo "⚠️ Warning: Failed to fetch API key from secret: $secret_name" >&2
+        return 1
+      fi
     else
-      echo "⚠️ Warning: Failed to fetch API key from secret: $SECRET_NAME"
+      echo "⚠️ Warning: buildkite-agent command not available, cannot fetch secret" >&2
+      return 1
     fi
+
+  # Check if it's an environment variable pattern: ${VAR_NAME}
+  elif [[ "$key_value" =~ ^\$\{(.+)\}$ ]]; then
+    local var_name="${BASH_REMATCH[1]}"
+    echo "--- 🔑 Resolving API key from environment variable: $var_name" >&2
+
+    if [[ -n "${!var_name:-}" ]]; then
+      echo "Successfully resolved API key from environment variable" >&2
+      echo "${!var_name}"
+      return 0
+    else
+      echo "⚠️ Warning: Environment variable $var_name is not set or empty" >&2
+      return 1
+    fi
+
+  # Check if it's an environment variable pattern: $VAR_NAME
+  elif [[ "$key_value" =~ ^\$([A-Za-z_][A-Za-z0-9_]*)$ ]]; then
+    local var_name="${BASH_REMATCH[1]}"
+    echo "--- 🔑 Resolving API key from environment variable: $var_name" >&2
+
+    if [[ -n "${!var_name:-}" ]]; then
+      echo "Successfully resolved API key from environment variable" >&2
+      echo "${!var_name}"
+      return 0
+    else
+      echo "⚠️ Warning: Environment variable $var_name is not set or empty" >&2
+      return 1
+    fi
+
+  # Otherwise, treat it as a literal value
   else
-    echo "⚠️ Warning: buildkite-agent command not available, cannot fetch secret"
+    echo "$key_value"
+    return 0
+  fi
+}
+
+# Process API_KEY if provided
+if [[ -n "$API_KEY" ]]; then
+  if resolved_key=$(resolve_api_key "$API_KEY" 2>&1) && [[ -n "$resolved_key" ]]; then
+    export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY="$resolved_key"
   fi
 fi
 

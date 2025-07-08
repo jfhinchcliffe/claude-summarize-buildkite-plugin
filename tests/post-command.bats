@@ -195,3 +195,37 @@ teardown() {
   # but for now just make sure it runs successfully
   assert_output --partial 'Claude Code Plugin (Post-Command)'
 }
+
+@test "Plugin works with environment variable API key format" {
+  # Test that the new unified API key configuration works with environment variables
+  export TEST_API_KEY='sk-ant-env-test-key'
+  export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY='${TEST_API_KEY}'
+
+  run "$PWD"/hooks/post-command
+
+  assert_success
+  assert_output --partial 'Claude Code Plugin (Post-Command)'
+  assert_output --partial 'Triggering Claude analysis'
+}
+
+@test "Plugin works with Buildkite secret API key format" {
+  # Test that the new unified API key configuration works with Buildkite secrets
+  export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY='$(buildkite-agent secret get ANTHROPIC_API_KEY)'
+
+  run "$PWD"/hooks/post-command
+
+  assert_success
+  assert_output --partial 'Claude Code Plugin (Post-Command)'
+  assert_output --partial 'Triggering Claude analysis'
+}
+
+@test "Plugin works with literal API key format" {
+  # Test that the new unified API key configuration works with literal values
+  export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY='sk-ant-literal-test-key'
+
+  run "$PWD"/hooks/post-command
+
+  assert_success
+  assert_output --partial 'Claude Code Plugin (Post-Command)'
+  assert_output --partial 'Triggering Claude analysis'
+}
