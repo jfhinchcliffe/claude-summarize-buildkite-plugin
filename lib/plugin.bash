@@ -79,9 +79,16 @@ function get_build_logs() {
   local analysis_level="${2:-step}"
   local api_token
   api_token="$(get_buildkite_api_token)"
-  
+
   # Call the refactored implementation
-  fetch_build_logs "${api_token}" "${max_lines}" "${analysis_level}"
+  local log_file
+  if log_file=$(fetch_build_logs "${api_token}" "${max_lines}" "${analysis_level}"); then
+    echo "${log_file}"
+    return 0
+  else
+    echo "Error: fetch_build_logs failed" >&2
+    return 1
+  fi
 }
 
 # Call Claude API for analysis
@@ -101,7 +108,7 @@ function call_claude_api() {
     echo "Using existing response file for testing"
     return 0
   fi
-  
+
   # Check if we can reach the API endpoint
   if ! curl -s --max-time 5 -o /dev/null https://api.anthropic.com/v1/ping; then
     echo "Error: Cannot reach Anthropic API. Please check your network connectivity." >&2
@@ -587,9 +594,22 @@ Build Duration (so far): ${current_build_time}s"
 
   # Get logs based on analysis level
   local log_file
-  log_file=$(get_build_logs "${max_log_lines}" "${analysis_level}")
+  if ! log_file=$(get_build_logs "${max_log_lines}" "${analysis_level}"); then
+    echo "Error: Failed to retrieve build logs" >&2
+    return 1
+  fi
+
+  # Validate log file exists and is readable
+  if [ -z "${log_file}" ] || [ ! -f "${log_file}" ] || [ ! -r "${log_file}" ]; then
+    echo "Error: Log file is not available or readable: ${log_file}" >&2
+    return 1
+  fi
+
   local logs
-  logs=$(< "${log_file}")
+  if ! logs=$(< "${log_file}"); then
+    echo "Error: Failed to read log file: ${log_file}" >&2
+    return 1
+  fi
 
   # Get agent context if configured
   local agent_context
