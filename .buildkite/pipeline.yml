@@ -28,8 +28,8 @@ steps:
           CLAUDE_TOKEN: ANTHROPIC_API_KEY
           BUILDKITE_TOKEN: BUILD_TOKEN
       - https://github.com/mcncl/claude-code-buildkite-plugin#main:
-          api_key: $$CLAUDE_TOKEN
-          buildkite_api_token: $$BUILDKITE_TOKEN
+          api_key: "$$CLAUDE_TOKEN"
+          buildkite_api_token: "$$BUILDKITE_TOKEN"
           trigger: always
           analysis_level: build
           compare_builds: true
