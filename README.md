@@ -30,26 +30,27 @@ steps:
     plugins:
       - mcncl/claude-code#v1.0.0:
           api_key: "${ANTHROPIC_API_KEY}"
-          
+
   # Option 2: Using Buildkite secrets (recommended)
   - label: "🧪 More tests"
     command: "npm test"
     plugins:
       - mcncl/claude-code#v1.0.0:
-          secret_name: "ANTHROPIC_API_KEY"
+          api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
 ```
 
 ## Configuration Options
 
-### Required (one of the following)
+### Required
 
 #### `api_key` (string)
 
-Your Anthropic API key for accessing Claude. Store this securely in your Buildkite environment variables.
+Your Anthropic API key for accessing Claude. This field supports multiple formats:
 
-#### `secret_name` (string)
+- **Environment variable**: `"${ANTHROPIC_API_KEY}"` - References an environment variable
+- **Buildkite secret**: `"$(buildkite-agent secret get ANTHROPIC_API_KEY)"` - Fetches from Buildkite secrets (recommended)
 
-Name of a Buildkite secret containing your Anthropic API key. The plugin will automatically fetch the secret using `buildkite-agent secret get`.
+The plugin automatically detects the format and resolves the API key appropriately.
 
 ### Optional
 
@@ -71,10 +72,10 @@ When to trigger Claude analysis. Options: `on-failure`, `always`, `manual`. Defa
 
 #### `analysis_level` (string)
 
-Level at which to analyze logs. Options: `step`, `build`. Default: `step`
+Level at which to analyze logs. Options: `step`, `build`. These require `buildkite_api_token` to be set in order to fetch job logs, else we default to available environment variables. Default: `step`
 
 - `step`: Analyze only the current step's logs
-- `build`: Analyze logs from all jobs in the entire build (requires `buildkite_api_token`)
+- `build`: Analyze logs from all jobs in the entire build
 
 #### `max_log_lines` (integer)
 
@@ -120,7 +121,7 @@ steps:
     command: "npm test"
     plugins:
       - mcncl/claude-code#v1.0.0:
-          api_key: "${ANTHROPIC_API_KEY}"
+          api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
 ```
 
 When tests fail, Claude will analyze the output and create an annotation with:
@@ -137,8 +138,8 @@ steps:
     command: "npm test"
     plugins:
       - mcncl/claude-code#v1.0.0:
-          api_key: "${ANTHROPIC_API_KEY}"
-          buildkite_api_token: "${BUILDKITE_API_TOKEN}"
+          api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
+          buildkite_api_token: "$(buildkite-agent secret get BUILDKITE_API_TOKEN)"
           analysis_level: "build"
           trigger: "always"
 ```
@@ -153,7 +154,7 @@ steps:
     command: "npm run build"
     plugins:
       - mcncl/claude-code#v1.0.0:
-          api_key: "${ANTHROPIC_API_KEY}"
+          api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
           trigger: "always"
           custom_prompt: "Focus on build performance and optimization opportunities"
 ```
@@ -168,7 +169,7 @@ steps:
       CLAUDE_ANALYZE: "true"  # Trigger manual analysis
     plugins:
       - mcncl/claude-code#v1.0.0:
-          api_key: "${ANTHROPIC_API_KEY}"
+          api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
           trigger: "manual"
           custom_prompt: "This is a deployment script. Focus on infrastructure and configuration issues."
           max_log_lines: 2000
@@ -182,7 +183,7 @@ steps:
     command: "npm run build"
     plugins:
       - mcncl/claude-code#v1.0.0:
-          api_key: "${ANTHROPIC_API_KEY}"
+          api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
           compare_builds: true
           comparison_range: 10
           custom_prompt: "Focus on build performance trends and identify any performance regressions"
@@ -202,21 +203,21 @@ steps:
     command: "npm run lint"
     plugins:
       - mcncl/claude-code#v1.0.0:
-          api_key: "${ANTHROPIC_API_KEY}"
+          api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
           custom_prompt: "Focus on code quality and style issues"
 
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
       - mcncl/claude-code#v1.0.0:
-          api_key: "${ANTHROPIC_API_KEY}"
+          api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
           custom_prompt: "Focus on test failures and coverage issues"
 
   - label: "🏗️ Build production"
     command: "npm run build:prod"
     plugins:
       - mcncl/claude-code#v1.0.0:
-          api_key: "${ANTHROPIC_API_KEY}"
+          api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
           trigger: "always"
           custom_prompt: "Focus on build optimization and bundle analysis"
 ```
