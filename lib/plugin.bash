@@ -81,7 +81,7 @@ function get_build_logs() {
   api_token="$(get_buildkite_api_token)"
   
   # Call the refactored implementation
-  fetch_build_logs "${api_token}" "${max_lines}" "${analysis_level}"
+  echo $(fetch_build_logs "${api_token}" "${max_lines}" "${analysis_level}")
 }
 
 # Call Claude API for analysis
