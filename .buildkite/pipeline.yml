@@ -25,6 +25,7 @@ steps:
       echo '🤖 AI Assessment'
       echo "using API key: $(buildkite-agent secret get ANTHROPIC_API_KEY)"
       echo "using build token: $(buildkite-agent secret get BUILD_TOKEN)"
+      echo "this secret does not exist: $(buildkite-agent secret get DOES_NOT_EXIST)"
     plugins: 
       - https://github.com/mcncl/claude-code-buildkite-plugin#main:
           api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
