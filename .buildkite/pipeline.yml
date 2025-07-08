@@ -21,15 +21,12 @@ steps:
   - wait: ~
 
   - label: "🤖 AI Assessment"
-    env:
-      ANTHROPIC_API_KEY: $(buildkite-agent secret get ANTHROPIC_API_KEY)
-      BUILD_TOKEN: $(buildkite-agent secret get BUILD_TOKEN)
     command: |
       echo '🤖 AI Assessment'
     plugins: 
       - https://github.com/mcncl/claude-code-buildkite-plugin#main:
-          api_key: "$ANTHROPIC_API_KEY"
-          buildkite_api_token: "$BUILD_TOKEN"
+          api_key: $(buildkite-agent secret get "ANTHROPIC_API_KEY")
+          buildkite_api_token: $(buildkite-agent secret get "BUILD_TOKEN")
           trigger: always
           analysis_level: build
           compare_builds: true
