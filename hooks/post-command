@@ -107,10 +107,10 @@ if should_trigger_analysis "${TRIGGER}" "${COMMAND_EXIT_STATUS}"; then
 
 ### 📋 $([ "${ANALYSIS_LEVEL}" = "build" ] && echo "Build" || echo "Step") Information
 
-$([ "${ANALYSIS_LEVEL}" = "step" ] && echo "**Step:** ${BUILDKITE_LABEL:-Unknown}  ")
-$([ "${ANALYSIS_LEVEL}" = "step" ] && echo "**Command:** \`${BUILDKITE_COMMAND:-Unknown}\`  ")
-**Branch:** ${BUILDKITE_BRANCH:-Unknown}
-**Commit:** \`${BUILDKITE_COMMIT:-Unknown}\`
+$([ "${ANALYSIS_LEVEL}" = "step" ] && echo "**Step:** ${BUILDKITE_LABEL:-Unknown}\n  ")
+$([ "${ANALYSIS_LEVEL}" = "step" ] && echo "**Command:** \`${BUILDKITE_COMMAND:-Unknown}\n`  ")
+**Branch:** ${BUILDKITE_BRANCH:-Unknown}\n
+**Commit:** \`${BUILDKITE_COMMIT:-Unknown}\n`
 $([ "${COMPARE_BUILDS}" = "true" ] && echo "**Historical Comparison:** Analyzing last ${COMPARISON_RANGE} builds  ")
 
 ---

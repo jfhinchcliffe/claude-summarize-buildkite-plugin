@@ -465,9 +465,9 @@ function analyze_build_failure() {
 
   # Get build information
   local build_info="Build: ${BUILDKITE_PIPELINE_SLUG} #${BUILDKITE_BUILD_NUMBER}
-Job: ${BUILDKITE_LABEL:-Unknown}
-Branch: ${BUILDKITE_BRANCH:-Unknown}
-Commit: ${BUILDKITE_COMMIT:-Unknown}
+Job: ${BUILDKITE_LABEL:-Unknown}\n
+Branch: ${BUILDKITE_BRANCH:-Unknown}\n
+Commit: ${BUILDKITE_COMMIT:-Unknown}\n
 Build URL: ${BUILDKITE_BUILD_URL:-Unknown}"
 
   # Calculate current build time if available
