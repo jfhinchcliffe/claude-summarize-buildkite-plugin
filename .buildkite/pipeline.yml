@@ -23,10 +23,8 @@ steps:
   - label: "🤖 AI Assessment"
     command: |
       echo '🤖 AI Assessment'
-    plugins: 
+    plugins:
       - https://github.com/mcncl/claude-code-buildkite-plugin#main:
-          api_key: $$ANTHROPIC_API_KEY
-          buildkite_api_token: $$BUILD_TOKEN
           trigger: always
           analysis_level: build
           compare_builds: true
