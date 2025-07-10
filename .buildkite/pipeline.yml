@@ -24,9 +24,6 @@ steps:
     command: |
       echo '🤖 AI Assessment'
     plugins: 
-      - secrets#v1.0.0:
-          ANTHROPIC_API_KEY: ANTHROPIC_API_KEY
-          BUILD_TOKEN: BUILD_TOKEN
       - https://github.com/mcncl/claude-code-buildkite-plugin#main:
           api_key: $$ANTHROPIC_API_KEY
           buildkite_api_token: $$BUILD_TOKEN

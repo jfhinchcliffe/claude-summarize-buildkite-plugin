@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+export ANTHROPIC_API_KEY=$(buildkite-agent secret get ANTHROPIC_API_KEY)
+export BUILD_TOKEN=$(buildkite-agent secret get BUILD_TOKEN)
