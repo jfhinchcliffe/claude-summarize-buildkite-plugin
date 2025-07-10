@@ -321,7 +321,8 @@ function get_build_history() {
 
   # Build-level comparison (default fallback)
   local fetch_count=$((comparison_range + 10))
-  local api_url="${builds_url}?per_page=${fetch_count}&finished_from=$(date -d '30 days ago' '+%Y-%m-%d')"
+  local api_url=""
+  api_url="${builds_url}?per_page=${fetch_count}&finished_from=$(date -d '30 days ago' '+%Y-%m-%d')"
 
   echo "Debug: Attempting API call to: ${api_url}" >&2
   echo "Debug: Using API token length: ${#api_token} chars" >&2
