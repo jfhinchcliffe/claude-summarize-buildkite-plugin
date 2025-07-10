@@ -56,7 +56,7 @@ The plugin automatically detects the format and resolves the API key appropriate
 
 #### `model` (string)
 
-Claude model to use for analysis. Default: `claude-3-5-sonnet-20241022`
+Claude model to use for analysis. Default: `claude-3-7-sonnet-20250219`
 
 #### `buildkite_api_token` (string)
 

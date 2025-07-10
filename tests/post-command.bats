@@ -58,7 +58,7 @@ teardown() {
 
   assert_success
   assert_output --partial 'Claude Code Plugin (Post-Command)'
-  assert_output --partial 'Model: claude-3-5-sonnet-20241022'
+  assert_output --partial 'Model: claude-3-7-sonnet-20250219'
   assert_output --partial 'Trigger: on-failure'
   assert_output --partial 'Command completed with exit status: 1'
   assert_output --partial 'Triggering Claude analysis'
