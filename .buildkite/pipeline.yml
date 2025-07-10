@@ -17,15 +17,3 @@ steps:
     plugins:
       - plugin-linter#v3.3.0:
           id: mcncl/claude-code
-
-  - wait: ~
-
-  - label: "🤖 AI Assessment"
-    command: |
-      echo '🤖 AI Assessment'
-    plugins:
-      - https://github.com/mcncl/claude-code-buildkite-plugin#main:
-          trigger: always
-          analysis_level: build
-          compare_builds: true
-          comparison_range: 5
