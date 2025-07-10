@@ -8,10 +8,18 @@ function get_buildkite_api_token() {
   local config_token=""
   config_token=$(plugin_read_config BUILDKITE_API_TOKEN "")
 
+  # Debug output
+  echo "--- :key: Debug: Buildkite API token lookup" >&2
+  echo "Config token (BUILDKITE_PLUGIN_CLAUDE_CODE_BUILDKITE_API_TOKEN): $([ -n "${config_token}" ] && echo "SET (${#config_token} chars)" || echo "NOT SET")" >&2
+  echo "Environment token (BUILDKITE_API_TOKEN): $([ -n "${BUILDKITE_API_TOKEN:-}" ] && echo "SET (${#BUILDKITE_API_TOKEN} chars)" || echo "NOT SET")" >&2
+
   # If not found in config, check environment variable
   if [ -z "${config_token}" ]; then
-    echo "${BUILDKITE_API_TOKEN:-}"
+    local env_token="${BUILDKITE_API_TOKEN:-}"
+    echo "Using environment variable: $([ -n "${env_token}" ] && echo "YES" || echo "NO")" >&2
+    echo "${env_token}"
   else
+    echo "Using plugin config: YES" >&2
     echo "${config_token}"
   fi
 }

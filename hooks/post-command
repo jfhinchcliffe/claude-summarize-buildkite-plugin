@@ -1,89 +1,4 @@
 #!/bin/bash
-
-# Special case for tests - if running in the test environment
-if [[ -n "${BATS_TEST_FILENAME:-}" || -n "${BUILDKITE_PLUGIN_TESTER:-}" ]]; then
-  # Get test-specific variables
-  API_KEY="${BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY:-}"
-  TRIGGER="${BUILDKITE_PLUGIN_CLAUDE_CODE_TRIGGER:-on-failure}"
-  ANALYSIS_LEVEL="${BUILDKITE_PLUGIN_CLAUDE_CODE_ANALYSIS_LEVEL:-step}"
-  EXIT_STATUS="${BUILDKITE_COMMAND_EXIT_STATUS:-0}"
-  ANNOTATE="${BUILDKITE_PLUGIN_CLAUDE_CODE_ANNOTATE:-true}"
-
-  # First test: Missing API key should fail
-  if [[ -z "${API_KEY}" ]]; then
-    echo "❌ Error: api_key is required for Claude Code plugin"
-    exit 1
-  fi
-
-  # Common header for all tests
-  echo "--- :robot_face: Claude Code Plugin (Post-Command)"
-  echo "Model: ${BUILDKITE_PLUGIN_CLAUDE_CODE_MODEL:-claude-3-5-sonnet-20241022}"
-  echo "Trigger: ${TRIGGER}"
-  echo "Analysis Level: ${ANALYSIS_LEVEL}"
-  echo "Max log lines: ${BUILDKITE_PLUGIN_CLAUDE_CODE_MAX_LOG_LINES:-1000}"
-  echo "Command completed with exit status: ${EXIT_STATUS}"
-
-  # Test for API failure simulation
-  if [[ "${BATS_TEST_NAME:-}" == *"API failure"* ]] || [[ -n "${BATS_RUN_TMPDIR:-}" && -n "${TEST_API_FAILURE:-}" ]]; then
-    echo "--- :mag: Triggering Claude analysis"
-    echo "--- :warning: Claude analysis failed"
-    exit 0
-  fi
-
-  # Special case for test 12
-  if [[ "${BATS_TEST_NUMBER:-}" == "12" ]]; then
-    echo "--- :mag: Triggering Claude analysis"
-    echo "--- :warning: Claude analysis failed"
-    exit 0
-  fi
-
-  # Test for disabled annotations
-  if [[ "${ANNOTATE}" == "false" ]]; then
-    echo "--- :mag: Triggering Claude analysis"
-    echo "--- :white_check_mark: Analysis completed"
-    echo "--- :brain: Claude Analysis Results"
-    echo "Mock analysis from Claude"
-    exit 0
-  fi
-
-  # Handle trigger logic for remaining tests
-  case "${TRIGGER}" in
-    "always")
-      echo "--- :mag: Triggering Claude analysis"
-      echo "--- :white_check_mark: Analysis completed"
-      echo "--- :memo: Creating annotation"
-      echo "--- :brain: Claude Analysis Results"
-      echo "Mock analysis from Claude"
-      ;;
-    "on-failure")
-      if [ "${EXIT_STATUS}" -ne 0 ]; then
-        echo "--- :mag: Triggering Claude analysis"
-        echo "--- :white_check_mark: Analysis completed"
-        echo "--- :memo: Creating annotation"
-        echo "--- :brain: Claude Analysis Results"
-        echo "Mock analysis from Claude"
-      else
-        echo "--- :zzz: Skipping Claude analysis (trigger: ${TRIGGER}, exit status: ${EXIT_STATUS})"
-      fi
-      ;;
-    "manual")
-      if [ "${CLAUDE_ANALYZE:-false}" = "true" ] || [[ "${BUILDKITE_MESSAGE:-}" == *"[claude-analyze]"* ]]; then
-        echo "--- :mag: Triggering Claude analysis"
-        echo "--- :white_check_mark: Analysis completed"
-        echo "--- :memo: Creating annotation"
-        echo "--- :brain: Claude Analysis Results"
-        echo "Mock analysis from Claude"
-      else
-        echo "--- :zzz: Skipping Claude analysis (trigger: ${TRIGGER})"
-      fi
-      ;;
-  esac
-
-  # Exit with success for tests
-  exit 0
-fi
-
-# Continue with normal operation for non-test runs
 set -uo pipefail
 
 DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
@@ -266,7 +181,7 @@ ANNOTATION
       <li>Analysis Level: ${ANALYSIS_LEVEL}</li>
       $([ "${COMPARE_BUILDS}" = "true" ] && echo "<li>Comparison: Using data from last ${COMPARISON_RANGE} builds</li>")
     </ul>
-    
+
     <p><strong>Possible Causes:</strong></p>
     <ul>
       <li>Invalid API key or authorization issue</li>
@@ -274,7 +189,7 @@ ANNOTATION
       <li>API rate limits or quota exceeded</li>
       <li>Internal service error</li>
     </ul>
-    
+
     <p><strong>Troubleshooting Steps:</strong></p>
     <ul>
       <li>Verify your API key is correct and properly configured</li>
