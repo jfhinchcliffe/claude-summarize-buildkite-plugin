@@ -13,8 +13,6 @@ function get_step_logs() {
     return 1
   fi
 
-  echo "Attempting to fetch step logs via Buildkite API..." >&2
-
   local api_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}/jobs/${BUILDKITE_JOB_ID}/log"
 
   if curl -s -f -H "Authorization: Bearer ${api_token}" "${api_url}" > "${log_file}.raw" 2>/dev/null; then
@@ -34,7 +32,6 @@ function get_step_logs() {
         fi
       else
         # Fallback if jq is not available
-        echo "Warning: jq not available for JSON processing, using raw response" >&2
         tail -n "${max_lines}" "${log_file}.raw" > "${log_file}"
         rm -f "${log_file}.raw"
       fi
@@ -43,10 +40,8 @@ function get_step_logs() {
       tail -n "${max_lines}" "${log_file}.raw" > "${log_file}"
       rm -f "${log_file}.raw"
     fi
-    echo "Successfully fetched step logs via API (${max_lines} lines)" >&2
     return 0
   else
-    echo "Warning: Failed to fetch step logs via API" >&2
     return 1
   fi
 }
@@ -63,8 +58,6 @@ function get_build_logs_internal() {
     return 1
   fi
 
-  echo "Attempting to fetch logs for all jobs in build via Buildkite API..." >&2
-
   # First, get the build to find all jobs
   local build_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}"
   local build_data_file="/tmp/build_${BUILDKITE_BUILD_ID}.json"
@@ -76,8 +69,6 @@ function get_build_logs_internal() {
       job_ids=$(jq -r '.jobs[].id' "${build_data_file}" 2>/dev/null)
 
       if [ -n "${job_ids}" ]; then
-        echo "Found jobs in build: $(echo "${job_ids}" | wc -l)" >&2
-
         # Create a combined log file
         : > "${log_file}"
 
@@ -105,7 +96,6 @@ function get_build_logs_internal() {
             process_job_log "${job_log_file}.raw" "${job_log_file}" "${max_lines}" "${log_file}"
             job_count=$((job_count + 1))
           else
-            echo "Warning: Failed to fetch logs for job ${job_id}" >&2
             echo "Could not fetch logs for this job." >> "${log_file}"
           fi
 
@@ -113,15 +103,12 @@ function get_build_logs_internal() {
         done
 
         if [ "${job_count}" -gt 0 ]; then
-          echo "Successfully fetched logs for ${job_count} jobs" >&2
           return 0
         fi
       fi
     fi
 
     rm -f "${build_data_file}"
-  else
-    echo "Warning: Failed to fetch build details from API" >&2
   fi
 
   return 1
@@ -172,8 +159,6 @@ function get_system_logs() {
   local max_lines="$1"
   local log_file="$2"
 
-  echo "Attempting to find logs in common locations..." >&2
-
   local potential_logs=(
     "/tmp/buildkite-agent.log"
     "${BUILDKITE_BUILD_CHECKOUT_PATH:-/tmp}/buildkite.log"
@@ -184,11 +169,9 @@ function get_system_logs() {
 
   # Try journalctl for systems using systemd
   if command -v journalctl >/dev/null 2>&1; then
-    echo "Attempting to get logs from journalctl..." >&2
     if journalctl -u buildkite-agent -n "${max_lines}" > "${log_file}.journal" 2>/dev/null; then
       if [ -s "${log_file}.journal" ]; then
         mv "${log_file}.journal" "${log_file}"
-        echo "Successfully captured logs from journalctl (${max_lines} lines)" >&2
         return 0
       fi
       rm -f "${log_file}.journal"
@@ -197,10 +180,8 @@ function get_system_logs() {
 
   for log_path in "${potential_logs[@]}"; do
     if [ -f "${log_path}" ] && [ -r "${log_path}" ]; then
-      echo "Found log file: ${log_path}" >&2
       tail -n "${max_lines}" "${log_path}" > "${log_file}" 2>/dev/null
       if [ -s "${log_file}" ]; then
-        echo "Successfully captured logs from ${log_path} (${max_lines} lines)" >&2
         return 0
       fi
     fi
@@ -212,8 +193,6 @@ function get_system_logs() {
 # Create a fallback log with basic build information
 function create_fallback_log() {
   local log_file="$1"
-
-  echo "Warning: Could not retrieve detailed logs, creating summary with available information" >&2
 
   {
     echo "Build Information Summary:"
@@ -236,15 +215,12 @@ function create_fallback_log() {
     echo "3. The plugin runs in the same environment as the failed command"
   } > "${log_file}"
 
-  echo "Created fallback log summary" >&2
   return 0
 }
 
 # Create agent environment info log
 function create_agent_environment_log() {
   local log_file="$1"
-
-  echo "Collecting information from buildkite-agent environment..." >&2
 
   # Create a basic log using Buildkite environment variables
   {
@@ -262,11 +238,9 @@ function create_agent_environment_log() {
   } > "${log_file}"
 
   if [ -s "${log_file}" ]; then
-    echo "Created log summary from buildkite-agent environment" >&2
     return 0
   fi
 
-  echo "Warning: Failed to create log summary from buildkite-agent" >&2
   return 1
 }
 
@@ -292,8 +266,6 @@ function fetch_build_logs() {
     return 1
   fi
 
-  echo "--- :mag: Fetching build logs (level: ${analysis_level})" >&2
-
   # For build-level analysis, try to get all jobs in the build
   if [ "${analysis_level}" = "build" ]; then
     if [ -n "${api_token}" ]; then
@@ -302,7 +274,6 @@ function fetch_build_logs() {
         return 0
       fi
     fi
-    echo "Warning: Could not get build-level logs, falling back to step-level" >&2
   fi
 
   # Method 1: Try Buildkite API if token and job ID are available (step-level analysis)

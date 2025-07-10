@@ -1,19 +1,4 @@
 #!/usr/bin/env bash
 
-echo "--- :key: Pre-command: Setting up Claude Code plugin secrets"
-
-# Get secrets and export them
-ANTHROPIC_API_KEY=$(buildkite-agent secret get ANTHROPIC_API_KEY)
-BUILD_TOKEN=$(buildkite-agent secret get BUILD_TOKEN)
-
-# Debug output (with masking for security)
-echo "ANTHROPIC_API_KEY retrieved: $([ -n "${ANTHROPIC_API_KEY}" ] && echo "YES (${#ANTHROPIC_API_KEY} chars)" || echo "NO")"
-echo "BUILD_TOKEN retrieved: $([ -n "${BUILD_TOKEN}" ] && echo "YES (${#BUILD_TOKEN} chars)" || echo "NO")"
-
-# Export the environment variables
-export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY="${ANTHROPIC_API_KEY}"
-export BUILDKITE_PLUGIN_CLAUDE_CODE_BUILDKITE_API_TOKEN="${BUILD_TOKEN}"
-
-echo "Plugin environment variables set:"
-echo "- BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY: $([ -n "${BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY}" ] && echo "SET" || echo "NOT SET")"
-echo "- BUILDKITE_PLUGIN_CLAUDE_CODE_BUILDKITE_API_TOKEN: $([ -n "${BUILDKITE_PLUGIN_CLAUDE_CODE_BUILDKITE_API_TOKEN}" ] && echo "SET" || echo "NOT SET")"
+export BUILDKITE_PLUGIN_CLAUDE_CODE_API_KEY=$(buildkite-agent secret get ANTHROPIC_API_KEY)
+export BUILDKITE_PLUGIN_CLAUDE_CODE_BUILDKITE_API_TOKEN=$(buildkite-agent secret get BUILD_TOKEN)

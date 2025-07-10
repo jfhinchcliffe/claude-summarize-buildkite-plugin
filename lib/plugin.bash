@@ -8,18 +8,10 @@ function get_buildkite_api_token() {
   local config_token=""
   config_token=$(plugin_read_config BUILDKITE_API_TOKEN "")
 
-  # Debug output
-  echo "--- :key: Debug: Buildkite API token lookup" >&2
-  echo "Config token (BUILDKITE_PLUGIN_CLAUDE_CODE_BUILDKITE_API_TOKEN): $([ -n "${config_token}" ] && echo "SET (${#config_token} chars)" || echo "NOT SET")" >&2
-  echo "Environment token (BUILDKITE_API_TOKEN): $([ -n "${BUILDKITE_API_TOKEN:-}" ] && echo "SET (${#BUILDKITE_API_TOKEN} chars)" || echo "NOT SET")" >&2
-
   # If not found in config, check environment variable
   if [ -z "${config_token}" ]; then
-    local env_token="${BUILDKITE_API_TOKEN:-}"
-    echo "Using environment variable: $([ -n "${env_token}" ] && echo "YES" || echo "NO")" >&2
-    echo "${env_token}"
+    echo "${BUILDKITE_API_TOKEN:-}"
   else
-    echo "Using plugin config: YES" >&2
     echo "${config_token}"
   fi
 }
@@ -248,10 +240,7 @@ function get_build_history() {
   local current_build_number="${BUILDKITE_BUILD_NUMBER}"
   local current_step_key="${BUILDKITE_STEP_KEY:-}"
 
-  echo "--- :chart_with_upwards_trend: Fetching historical data for ${comparison_range} builds (level: ${analysis_level})" >&2
-
   if [ -z "${api_token}" ]; then
-    echo "Warning: No API token available for build history comparison" >&2
     return 1
   fi
 
@@ -260,7 +249,6 @@ function get_build_history() {
 
   # For step-level comparison, we need to track job-specific info
   if [ "${analysis_level}" = "step" ] && [ -n "${current_step_key}" ]; then
-    echo "Fetching step-level comparison data for step key: ${current_step_key}" >&2
     local step_history_file="/tmp/step_history_${BUILDKITE_BUILD_ID}.json"
 
     # Fetch recent builds (get more than needed to filter out current build)
@@ -308,16 +296,11 @@ function get_build_history() {
         done
 
         if [ "${count}" -gt 0 ]; then
-          echo "Successfully fetched step-level history for ${count} previous builds" >&2
           echo "${step_history_file}"
           return 0
-        else
-          echo "Warning: Could not find matching steps in previous builds" >&2
         fi
       fi
     fi
-
-    echo "Warning: Falling back to build-level comparison" >&2
   fi
 
   # Build-level comparison (default fallback)
@@ -325,34 +308,8 @@ function get_build_history() {
   local api_url=""
   api_url="${builds_url}?per_page=${fetch_count}&finished_from=$(date -d '30 days ago' '+%Y-%m-%d')"
 
-  echo "Debug: Attempting API call to: ${api_url}" >&2
-  echo "Debug: Using API token length: ${#api_token} chars" >&2
-
   if curl -s -f -H "Authorization: Bearer ${api_token}" "${api_url}" > "${history_file}" 2>/dev/null; then
-    echo "Debug: API call successful, processing response..." >&2
-    echo "Debug: Response file size: $(wc -c < "${history_file}") bytes" >&2
-
     if command -v jq >/dev/null 2>&1; then
-      echo "Debug: jq is available, filtering builds..." >&2
-      echo "Debug: Current build number: ${current_build_number}" >&2
-      echo "Debug: Comparison range: ${comparison_range}" >&2
-
-      # Check if response is valid JSON
-      if ! jq . "${history_file}" >/dev/null 2>&1; then
-        echo "Debug: Response is not valid JSON, content:" >&2
-        head -5 "${history_file}" >&2
-        echo "Warning: Invalid JSON response from API" >&2
-        return 1
-      fi
-
-      # Count total builds in response
-      local total_builds
-      total_builds=$(jq 'length' "${history_file}" 2>/dev/null)
-      echo "Debug: Total builds in response: ${total_builds}" >&2
-
-      # Show build numbers and states for debugging
-      echo "Debug: Build numbers and states in response:" >&2
-      jq -r '.[] | "\(.number): \(.state)"' "${history_file}" 2>/dev/null | head -10 >&2
 
       # Filter out current build and get the requested number of previous builds
       # Exclude builds that are still active/pending (running, scheduled, creating, etc.)
@@ -363,32 +320,14 @@ function get_build_history() {
         | reverse
         | .[:'"${comparison_range}"']' "${history_file}" 2>/dev/null)
 
-      local filtered_count
-      filtered_count=$(echo "${filtered_builds}" | jq 'length' 2>/dev/null)
-      echo "Debug: Filtered builds count: ${filtered_count}" >&2
-
       if [ -n "${filtered_builds}" ] && [ "${filtered_builds}" != "[]" ]; then
         echo "${filtered_builds}" > "${history_file}"
-        echo "Successfully fetched build-level history for comparison" >&2
         echo "${history_file}"
         return 0
-      else
-        echo "Debug: No valid builds found after filtering" >&2
       fi
-    else
-      echo "Debug: jq is not available" >&2
-    fi
-  else
-    echo "Debug: API call failed" >&2
-    echo "Debug: Testing API connectivity..." >&2
-    if curl -s -f -H "Authorization: Bearer ${api_token}" "${builds_url}?per_page=1" > /dev/null 2>&1; then
-      echo "Debug: Basic API connectivity works" >&2
-    else
-      echo "Debug: Basic API connectivity failed" >&2
     fi
   fi
 
-  echo "Warning: Could not fetch build history for comparison" >&2
   return 1
 }
 
@@ -543,7 +482,6 @@ Build URL: ${BUILDKITE_BUILD_URL:-Unknown}"
   if [ -n "${api_token}" ]; then
     # For step-level analysis, try to get step timing from API
     if [ "${analysis_level}" = "step" ] && [ -n "${BUILDKITE_JOB_ID:-}" ]; then
-      echo "Fetching step timing data via API..." >&2
       local job_details_file="/tmp/job_${BUILDKITE_JOB_ID}_timing.json"
       local job_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}/jobs/${BUILDKITE_JOB_ID}"
 
@@ -587,7 +525,6 @@ Step Duration (so far): ${current_build_time}s"
       fi
     # For build-level analysis, get build timing from API
     elif [ "${analysis_level}" = "build" ]; then
-      echo "Fetching build timing data via API..." >&2
       local build_details_file="/tmp/build_${BUILDKITE_BUILD_NUMBER}_timing.json"
       local build_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}"
 

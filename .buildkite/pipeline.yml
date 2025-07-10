@@ -7,11 +7,11 @@ steps:
             - lib/**
             - tests/**
 
-  # - label: ":test_tube: Tests"
-  #   plugins:
-  #     - docker-compose#v5.10.0:
-  #         run: tests
-  #         config: compose.yaml
+  - label: ":test_tube: Tests"
+    plugins:
+      - docker-compose#v5.10.0:
+          run: tests
+          config: compose.yaml
 
   - label: ":book: Lint"
     plugins:
