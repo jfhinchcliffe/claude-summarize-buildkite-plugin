@@ -321,8 +321,33 @@ function get_build_history() {
 
   # Build-level comparison (default fallback)
   local fetch_count=$((comparison_range + 10))
-  if curl -s -f -H "Authorization: Bearer ${api_token}" "${builds_url}?per_page=${fetch_count}&finished_from=$(date -d '30 days ago' '+%Y-%m-%d')" > "${history_file}" 2>/dev/null; then
+  local api_url="${builds_url}?per_page=${fetch_count}&finished_from=$(date -d '30 days ago' '+%Y-%m-%d')"
+
+  echo "Debug: Attempting API call to: ${api_url}" >&2
+  echo "Debug: Using API token length: ${#api_token} chars" >&2
+
+  if curl -s -f -H "Authorization: Bearer ${api_token}" "${api_url}" > "${history_file}" 2>/dev/null; then
+    echo "Debug: API call successful, processing response..." >&2
+    echo "Debug: Response file size: $(wc -c < "${history_file}") bytes" >&2
+
     if command -v jq >/dev/null 2>&1; then
+      echo "Debug: jq is available, filtering builds..." >&2
+      echo "Debug: Current build number: ${current_build_number}" >&2
+      echo "Debug: Comparison range: ${comparison_range}" >&2
+
+      # Check if response is valid JSON
+      if ! jq . "${history_file}" >/dev/null 2>&1; then
+        echo "Debug: Response is not valid JSON, content:" >&2
+        head -5 "${history_file}" >&2
+        echo "Warning: Invalid JSON response from API" >&2
+        return 1
+      fi
+
+      # Count total builds in response
+      local total_builds
+      total_builds=$(jq 'length' "${history_file}" 2>/dev/null)
+      echo "Debug: Total builds in response: ${total_builds}" >&2
+
       # Filter out current build and get the requested number of previous builds
       local filtered_builds
       filtered_builds=$(jq --arg current_build "${current_build_number}" '
@@ -331,12 +356,28 @@ function get_build_history() {
         | reverse
         | .[:'"${comparison_range}"']' "${history_file}" 2>/dev/null)
 
+      local filtered_count
+      filtered_count=$(echo "${filtered_builds}" | jq 'length' 2>/dev/null)
+      echo "Debug: Filtered builds count: ${filtered_count}" >&2
+
       if [ -n "${filtered_builds}" ] && [ "${filtered_builds}" != "[]" ]; then
         echo "${filtered_builds}" > "${history_file}"
         echo "Successfully fetched build-level history for comparison" >&2
         echo "${history_file}"
         return 0
+      else
+        echo "Debug: No valid builds found after filtering" >&2
       fi
+    else
+      echo "Debug: jq is not available" >&2
+    fi
+  else
+    echo "Debug: API call failed" >&2
+    echo "Debug: Testing API connectivity..." >&2
+    if curl -s -f -H "Authorization: Bearer ${api_token}" "${builds_url}?per_page=1" > /dev/null 2>&1; then
+      echo "Debug: Basic API connectivity works" >&2
+    else
+      echo "Debug: Basic API connectivity failed" >&2
     fi
   fi
 
