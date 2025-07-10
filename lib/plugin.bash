@@ -268,8 +268,9 @@ function get_build_history() {
     if curl -s -f -H "Authorization: Bearer ${api_token}" "${builds_url}?per_page=${fetch_count}&finished_from=$(date -d '30 days ago' '+%Y-%m-%d')" > "${history_file}.raw" 2>/dev/null; then
       if command -v jq >/dev/null 2>&1; then
         # Filter out current build and get the requested number of previous builds
+        # Exclude builds that are still active/pending (running, scheduled, creating, etc.)
         jq --arg current_build "${current_build_number}" '
-          [.[] | select(.number != ($current_build | tonumber) and .state == "finished")]
+          [.[] | select(.number != ($current_build | tonumber) and (.state != "running" and .state != "scheduled" and .state != "creating" and .state != "canceling" and .state != "failing" and .state != "blocked"))]
           | sort_by(.number)
           | reverse' "${history_file}.raw" > "${history_file}" 2>/dev/null
 
@@ -349,10 +350,15 @@ function get_build_history() {
       total_builds=$(jq 'length' "${history_file}" 2>/dev/null)
       echo "Debug: Total builds in response: ${total_builds}" >&2
 
+      # Show build numbers and states for debugging
+      echo "Debug: Build numbers and states in response:" >&2
+      jq -r '.[] | "\(.number): \(.state)"' "${history_file}" 2>/dev/null | head -10 >&2
+
       # Filter out current build and get the requested number of previous builds
+      # Exclude builds that are still active/pending (running, scheduled, creating, etc.)
       local filtered_builds
       filtered_builds=$(jq --arg current_build "${current_build_number}" '
-        [.[] | select(.number != ($current_build | tonumber) and .state == "finished")]
+        [.[] | select(.number != ($current_build | tonumber) and (.state != "running" and .state != "scheduled" and .state != "creating" and .state != "canceling" and .state != "failing" and .state != "blocked"))]
         | sort_by(.number)
         | reverse
         | .[:'"${comparison_range}"']' "${history_file}" 2>/dev/null)
