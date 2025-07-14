@@ -1,4 +1,4 @@
-# Claude Code Buildkite Plugin [![Build status](https://badge.buildkite.com/741da64ce676981eccb96fd67290a2695da07921cdc111b03a.svg)](https://buildkite.com/no-assembly/claude-code-plugin)
+# Claude Summarize Buildkite Plugin [![Build status](https://badge.buildkite.com/330a0fa71656f6f6c2bedc4812c82021b825bfd7c7125153de.svg)](https://buildkite.com/buildkite/claude-summarize-plugin?branch=main) 
 
 AI-powered build analysis and error diagnosis using Claude. This plugin automatically analyzes build failures, provides root cause analysis, and suggests actionable fixes through Buildkite annotations.
 
@@ -20,23 +20,31 @@ AI-powered build analysis and error diagnosis using Claude. This plugin automati
 
 1. Get your Anthropic API key from [console.anthropic.com](https://console.anthropic.com)
 2. Add it to your Buildkite environment variables as `ANTHROPIC_API_KEY`
-3. Add the plugin to your pipeline using one of these approaches:
+3. For Buildkite secrets, create `.buildkite/hooks/pre-command` in your repository:
+   ```bash
+   #!/bin/bash
+   export ANTHROPIC_API_KEY=$(buildkite-agent secret get ANTHROPIC_API_KEY)
+   export BUILDKITE_API_TOKEN=$(buildkite-agent secret get BUILDKITE_API_TOKEN)
+   ```
+4. Add the plugin to your pipeline using one of these approaches:
 
 ```yaml
 steps:
-  # Option 1: Using environment variable
+  # Option 1: Using environment variable set at upload time
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
       - claude-summarize#v1.0.0:
-          api_key: "${ANTHROPIC_API_KEY}"
+          api_key: "$$ANTHROPIC_API_KEY"
 
   # Option 2: Using Buildkite secrets (recommended)
+  # First, create .buildkite/hooks/pre-command with:
+  # export ANTHROPIC_API_KEY=$(buildkite-agent secret get ANTHROPIC_API_KEY)
   - label: "🧪 More tests"
     command: "npm test"
     plugins:
       - claude-summarize#v1.0.0:
-          api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
+          api_key: "$$ANTHROPIC_API_KEY"
 ```
 
 ## Configuration Options
@@ -45,12 +53,10 @@ steps:
 
 #### `api_key` (string)
 
-Your Anthropic API key for accessing Claude. This field supports multiple formats:
+Your Anthropic API key for accessing Claude. Use an environment variable reference:
 
-- **Environment variable**: `"${ANTHROPIC_API_KEY}"` - References an environment variable
-- **Buildkite secret**: `"$(buildkite-agent secret get ANTHROPIC_API_KEY)"` - Fetches from Buildkite secrets (recommended)
-
-The plugin automatically detects the format and resolves the API key appropriately.
+- **Environment variable**: `"${ANTHROPIC_API_KEY}"` - References an environment variable set at upload time
+- **Buildkite secrets**: Create `.buildkite/hooks/pre-command` with `export ANTHROPIC_API_KEY=$(buildkite-agent secret get ANTHROPIC_API_KEY)`, then use `"$$ANTHROPIC_API_KEY"` (recommended)
 
 ### Optional
 
@@ -121,7 +127,7 @@ steps:
     command: "npm test"
     plugins:
       - claude-summarize#v1.0.0:
-          api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
+          api_key: "$$ANTHROPIC_API_KEY"
 ```
 
 When tests fail, Claude will analyze the output and create an annotation with:
@@ -138,8 +144,8 @@ steps:
     command: "npm test"
     plugins:
       - claude-summarize#v1.0.0:
-          api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
-          buildkite_api_token: "$(buildkite-agent secret get BUILDKITE_API_TOKEN)"
+          api_key: "$$ANTHROPIC_API_KEY"
+          buildkite_api_token: "$$BUILDKITE_API_TOKEN"
           analysis_level: "build"
           trigger: "always"
 ```
@@ -154,7 +160,7 @@ steps:
     command: "npm run build"
     plugins:
       - claude-summarize#v1.0.0:
-          api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
+          api_key: "$$ANTHROPIC_API_KEY"
           trigger: "always"
           custom_prompt: "Focus on build performance and optimization opportunities"
 ```
@@ -169,7 +175,7 @@ steps:
       CLAUDE_ANALYZE: "true"  # Trigger manual analysis
     plugins:
       - claude-summarize#v1.0.0:
-          api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
+          api_key: "$$ANTHROPIC_API_KEY"
           trigger: "manual"
           custom_prompt: "This is a deployment script. Focus on infrastructure and configuration issues."
           max_log_lines: 2000
@@ -183,7 +189,7 @@ steps:
     command: "npm run build"
     plugins:
       - claude-summarize#v1.0.0:
-          api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
+          api_key: "$$ANTHROPIC_API_KEY"
           compare_builds: true
           comparison_range: 10
           custom_prompt: "Focus on build performance trends and identify any performance regressions"
@@ -203,21 +209,21 @@ steps:
     command: "npm run lint"
     plugins:
       - claude-summarize#v1.0.0:
-          api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
+          api_key: "$$ANTHROPIC_API_KEY"
           custom_prompt: "Focus on code quality and style issues"
 
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
       - claude-summarize#v1.0.0:
-          api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
+          api_key: "$$ANTHROPIC_API_KEY"
           custom_prompt: "Focus on test failures and coverage issues"
 
   - label: "🏗️ Build production"
     command: "npm run build:prod"
     plugins:
       - claude-summarize#v1.0.0:
-          api_key: "$(buildkite-agent secret get ANTHROPIC_API_KEY)"
+          api_key: "$$ANTHROPIC_API_KEY"
           trigger: "always"
           custom_prompt: "Focus on build optimization and bundle analysis"
 ```
