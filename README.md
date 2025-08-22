@@ -60,6 +60,15 @@ Your Anthropic API key for accessing Claude. Use an environment variable referen
 
 ### Optional
 
+#### `anthropic_base_url` (string)
+
+Custom Anthropic API base URL. Default: `https://api.anthropic.com`
+
+Use this to point to alternative endpoints like:
+- Enterprise/private Claude deployments
+- Proxy servers
+- Development/testing environments
+
 #### `model` (string)
 
 Claude model to use for analysis. Default: `claude-3-7-sonnet-20250219`
