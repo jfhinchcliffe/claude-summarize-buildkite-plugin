@@ -209,3 +209,13 @@ teardown() {
   assert_output --partial 'Claude Code Plugin (Post-Command)'
   assert_output --partial 'Triggering Claude analysis'
 }
+
+@test "Plugin uses custom anthropic base URL" {
+  export BUILDKITE_PLUGIN_CLAUDE_CODE_ANTHROPIC_BASE_URL='https://custom-claude-api.company.com'
+
+  run "$PWD"/hooks/post-command
+
+  assert_success
+  assert_output --partial 'Claude Code Plugin (Post-Command)'
+  assert_output --partial 'Triggering Claude analysis'
+}

@@ -6,6 +6,10 @@ requirements:
   - curl
 configuration:
   properties:
+    anthropic_base_url:
+      type: string
+      description: Base URL for Anthropic API
+      default: https://api.anthropic.com
     api_key:
       type: string
       description: Anthropic API key for Claude access. Supports environment variables (${VAR}), Buildkite secrets ($(buildkite-agent secret get SECRET)), or direct values

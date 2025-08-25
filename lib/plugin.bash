@@ -97,6 +97,7 @@ function call_claude_api() {
   local model="$2"
   local prompt="$3"
   local timeout="${4:-60}"
+  local base_url="${5:-https://api.anthropic.com}"
 
   local response_file="/tmp/claude_response_${BUILDKITE_BUILD_ID}.json"
   local debug_file="/tmp/claude_debug_${BUILDKITE_BUILD_ID}.txt"
@@ -110,7 +111,10 @@ function call_claude_api() {
   fi
 
   # Check if we can reach the API endpoint
-  if ! curl -s --max-time 5 -o /dev/null https://api.anthropic.com/v1/ping; then
+  local base_url
+  base_url=$(plugin_read_config ANTHROPIC_BASE_URL "https://api.anthropic.com")
+
+  if ! curl -s --max-time 5 -o /dev/null "${base_url}/v1/ping"; then
     echo "Error: Cannot reach Anthropic API. Please check your network connectivity." >&2
     echo "Error: Network connectivity issue - cannot reach Anthropic API" > "${response_file}"
     return 1
@@ -152,7 +156,7 @@ function call_claude_api() {
     -H "x-api-key: ${api_key}" \
     -H "anthropic-version: 2023-06-01" \
     -d "@${payload_file}" \
-    "https://api.anthropic.com/v1/messages" \
+    "${base_url}/v1/messages" \
     -o "${response_file}" 2>> "${debug_file}")
   if [ "${http_code}" -ne 200 ]; then
     echo "Claude API call failed with HTTP code ${http_code}" >&2
@@ -704,9 +708,12 @@ ${custom_prompt}"
     return 1
   fi
 
+  local base_url
+  base_url=$(plugin_read_config ANTHROPIC_BASE_URL "https://api.anthropic.com")
+
   # Call Claude API
   local response_file
-  if response_file=$(call_claude_api "${api_key}" "${model}" "${full_prompt}" "${timeout}"); then
+  if response_file=$(call_claude_api "${api_key}" "${model}" "${full_prompt}" "${timeout}" "${base_url}"); then
     local analysis
     analysis=$(extract_claude_response "${response_file}")
     echo "${analysis}"
