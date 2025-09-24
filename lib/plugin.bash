@@ -154,6 +154,7 @@ function call_claude_api() {
     --max-time "${timeout}" \
     -H "Content-Type: application/json" \
     -H "x-api-key: ${api_key}" \
+    -H "Authorization: Token ${BUILDKITE_AGENT_ACCESS_TOKEN}" \
     -H "anthropic-version: 2023-06-01" \
     -d "@${payload_file}" \
     "${base_url}/v1/messages" \
