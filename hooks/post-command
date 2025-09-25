@@ -32,6 +32,7 @@ echo "--- :gear: Debug: curl exit code: ${curl_exit_code}"
 if [ $curl_exit_code -eq 0 ]; then
   echo "--- :white_check_mark: Claude response:"
   echo "$response_body"
+  buildkite-agent annotate --style info --context claude-summarize --append "$response_body"
 else
   echo "--- :x: Claude API call failed with exit code ${curl_exit_code}"
   exit 1
