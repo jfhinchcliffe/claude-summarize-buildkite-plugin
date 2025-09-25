@@ -18,21 +18,20 @@ echo "--- :robot_face: Calling Claude API"
 echo "URL: http://agent.buildkite.localhost/v3/ai/claude/v1/messages"
 echo "Payload: ${PROMPT}"
 
-# Make API call with verbose output
-response=$(curl -v -X POST \
+# Make API call and capture response body
+response_body=$(curl -s -X POST \
   -H "Authorization: Token $BUILDKITE_AGENT_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
-  -d "$BUILDKITE_PLUGIN_CLAUDE_SUMMARIZE_PROMPT" \
-  http://agent.buildkite.localhost/v3/ai/claude/v1/messages 2>&1)
+  -d "$PROMPT" \
+  http://agent.buildkite.localhost/v3/ai/claude/v1/messages)
 
 curl_exit_code=$?
 
 echo "--- :gear: Debug: curl exit code: ${curl_exit_code}"
-echo "--- :gear: Debug: full curl output:"
-echo "$response"
 
 if [ $curl_exit_code -eq 0 ]; then
-  echo "--- :white_check_mark: Claude API call succeeded"
+  echo "--- :white_check_mark: Claude response:"
+  echo "$response_body"
 else
   echo "--- :x: Claude API call failed with exit code ${curl_exit_code}"
   exit 1
