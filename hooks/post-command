@@ -12,10 +12,15 @@ DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 API_KEY=$(plugin_read_config api_key "")
 # Trim any whitespace that might be causing issues
 API_KEY=$(echo "$API_KEY" | tr -d '[:space:]')
-
+SNAKES=$(plugin_read_config SNAKES "No snakes... 🐍")
 # If API_KEY is still not set, this means it wasn't provided directly or via the environment hook
 if [ -z "${API_KEY}" ]; then
   echo "❌ Error: api_key is required for Claude Code plugin"
+  echo "Did snakes work? ${SNAKES}"
+  echo "--- 🔍 Plugin configuration debug:"
+  env | grep "^BUILDKITE_PLUGIN_CLAUDE_SUMMARIZE_BUILDKITE_PLUGIN_" | sort || echo "No plugin environment variables found"
+  echo "--- 🌍 Relevant environment variables:"
+  env | grep -E "^(ANTHROPIC_|BUILDKITE_)" | sort
   exit 1
 fi
 
