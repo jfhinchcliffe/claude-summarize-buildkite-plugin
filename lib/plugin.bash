@@ -97,7 +97,7 @@ function call_claude_api() {
   local model="$2"
   local prompt="$3"
   local timeout="${4:-60}"
-  local base_url="${5:-https://api.anthropic.com}"
+  local base_url="${5}"
 
   local response_file="/tmp/claude_response_${BUILDKITE_BUILD_ID}.json"
   local debug_file="/tmp/claude_debug_${BUILDKITE_BUILD_ID}.txt"
@@ -106,14 +106,12 @@ function call_claude_api() {
 
   # For tests, if the response file already exists, use it directly
   if [ -f "${response_file}" ]; then
-    echo "Using existing response file for testing"
+    echo "Using existing response file for testing" >&2
+    echo "${response_file}"
     return 0
   fi
 
   # Check if we can reach the API endpoint
-  local base_url
-  base_url=$(plugin_read_config ANTHROPIC_BASE_URL "https://api.anthropic.com")
-
   if ! curl -s --max-time 5 -o /dev/null "${base_url}/v1/ping"; then
     echo "Error: Cannot reach Anthropic API. Please check your network connectivity." >&2
     echo "Error: Network connectivity issue - cannot reach Anthropic API" > "${response_file}"
@@ -148,9 +146,9 @@ function call_claude_api() {
     }' > "${payload_file}"
 
   # Make API call silently but log any errors
+
   local http_code
-  echo "Calling Claude API..." >&2
-  http_code=$(curl -s -w "%{http_code}" \
+  http_code=$(curl -v -s -w "%{http_code}" \
     --max-time "${timeout}" \
     -H "Content-Type: application/json" \
     -H "x-api-key: ${api_key}" \
@@ -158,8 +156,13 @@ function call_claude_api() {
     -d "@${payload_file}" \
     "${base_url}/v1/messages" \
     -o "${response_file}" 2>> "${debug_file}")
+
   if [ "${http_code}" -ne 200 ]; then
     echo "Claude API call failed with HTTP code ${http_code}" >&2
+    if [ -f "${response_file}" ]; then
+      echo "API Response:" >&2
+      cat "${response_file}" >&2
+    fi
   fi
 
   # Return the response file path
@@ -696,21 +699,24 @@ Additional Context:
 ${custom_prompt}"
   fi
 
-  # For tests, always return success to make tests pass
-  if [[ -n "${BATS_TEST_FILENAME:-}" || -n "${BUILDKITE_PLUGIN_TESTER:-}" ]]; then
-    echo "Mock analysis from Claude"
-    return 0
-  fi
-
-  # Test network connectivity first
-  if ! curl -s --max-time 10 -o /dev/null https://api.anthropic.com; then
-    echo "Network connectivity test failed - cannot reach api.anthropic.com" >&2
-    return 1
-  fi
-
   local base_url
-  base_url=$(plugin_read_config ANTHROPIC_BASE_URL "https://api.anthropic.com")
+  local using_hosted_models
 
+  using_hosted_models=$(plugin_read_config HOSTED_MODELS "false")
+  anthropic_base_url=$(plugin_read_config ANTHROPIC_BASE_URL "")
+
+  # If anthropic_base_url is provided, use that
+  # If hosted_models is true, use internal URL
+  # otherwise use the Anthropic public URL
+  if [ -n "${anthropic_base_url}" ]; then
+    base_url="${anthropic_base_url}"
+  elif [ "${using_hosted_models}" = "true" ]; then
+    base_url="https://agent.buildkite.com/v3/ai/anthropic"
+  else
+    base_url="https://api.anthropic.com"
+  fi
+
+  echo "Using API base URL: ${base_url}" >&2
   # Call Claude API
   local response_file
   if response_file=$(call_claude_api "${api_key}" "${model}" "${full_prompt}" "${timeout}" "${base_url}"); then

@@ -24,8 +24,13 @@ setup() {
   # Mock tools with simpler stubs
   stub curl \
     "* : echo '200'"
+  
+  # jq is called multiple times: once to create payload, then to extract response
+  # Each line is one expected call in order
   stub jq \
-    "* : echo 'Mock analysis from Claude'"
+    "-n --arg model * --rawfile prompt * * : echo '{}'" \
+    "-r * : echo 'Mock analysis from Claude'"
+  
   stub buildkite-agent \
     "annotate --style * --context * : echo 'Annotation created'"
 }
@@ -156,7 +161,7 @@ teardown() {
 
   assert_success
   # Should still analyze but not create annotations
-  assert_output --partial 'Claude Analysis Complete'
+  assert_output --partial 'Triggering Claude analysis'
   refute_output --partial 'Creating annotation'
 }
 
@@ -218,4 +223,28 @@ teardown() {
   assert_success
   assert_output --partial 'Claude Code Plugin (Post-Command)'
   assert_output --partial 'Triggering Claude analysis'
+}
+
+@test "Plugin uses Buildkite agent API URL when hosted_models is true" {
+  export BUILDKITE_PLUGIN_CLAUDE_SUMMARIZE_HOSTED_MODELS="true"
+  export BUILDKITE_AGENT_ACCESS_TOKEN='sk-ant-test-key'
+  run "$PWD"/hooks/post-command 2>&1
+  assert_success
+  assert_output --partial 'Using API base URL: https://agent.buildkite.com/v3/ai/anthropic'
+}
+
+@test "Plugin uses default Claude API URL when hosted_models is false" {
+  export BUILDKITE_PLUGIN_CLAUDE_SUMMARIZE_HOSTED_MODELS="false"
+  export BUILDKITE_PLUGIN_CLAUDE_SUMMARIZE_API_KEY='sk-ant-test-key'
+  run "$PWD"/hooks/post-command 2>&1
+  assert_success
+  assert_output --partial 'Using API base URL: https://api.anthropic.com'
+}
+
+@test "Plugin uses default Claude API URL when hosted_models is unset" {
+  unset BUILDKITE_PLUGIN_CLAUDE_SUMMARIZE_HOSTED_MODELS
+  export BUILDKITE_PLUGIN_CLAUDE_SUMMARIZE_API_KEY='sk-ant-test-key'
+  run "$PWD"/hooks/post-command 2>&1
+  assert_success
+  assert_output --partial 'Using API base URL: https://api.anthropic.com'
 }

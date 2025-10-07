@@ -1,6 +1,32 @@
 #!/bin/bash
 set -euo pipefail
 
+# Validate API token by testing access-token endpoint
+function validate_api_token() {
+  local api_token="$1"
+  
+  if [ -z "${api_token}" ]; then
+    echo "Warning: No API token provided for validation" >&2
+    return 1
+  fi
+  
+  echo "Testing API token..." >&2
+  local response
+  response=$(curl -s --request GET \
+    --url https://api.buildkite.com/v2/access-token \
+    --header "Authorization: Bearer ${api_token}")
+  
+  echo "API Token Response: ${response}" >&2
+  
+  if echo "${response}" | grep -q '"uuid"'; then
+    echo "API token is valid" >&2
+    return 0
+  else
+    echo "API token validation failed" >&2
+    return 1
+  fi
+}
+
 # Helper function to get step-level logs
 function get_step_logs() {
   local api_token="$1"
@@ -266,13 +292,24 @@ function fetch_build_logs() {
     return 1
   fi
 
+  # Validate API token if provided
+  if [ -n "${api_token}" ]; then
+    validate_api_token "${api_token}"
+  fi
+
   # For build-level analysis, try to get all jobs in the build
   if [ "${analysis_level}" = "build" ]; then
     if [ -n "${api_token}" ]; then
+      echo "Fetching logs for all jobs in build..." >&2
       if get_build_logs_internal "${api_token}" "${max_lines}" "${log_file}"; then
+        echo "Successfully retrieved build-level logs" >&2
         echo "${log_file}"
         return 0
+      else
+        echo "Warning: Failed to retrieve build-level logs, falling back to step logs" >&2
       fi
+    else
+      echo "Warning: No API token available for build-level analysis, falling back to step logs" >&2
     fi
   fi
 
