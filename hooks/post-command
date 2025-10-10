@@ -1,5 +1,5 @@
 #!/bin/bash
-set -uo pipefail
+set -euoeuo pipefail
 
 DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 
@@ -8,185 +8,135 @@ DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 # shellcheck source=lib/logs.bash
 . "$DIR/../lib/logs.bash"
 
-# Read plugin configuration
-HOSTED_MODELS=$(plugin_read_config HOSTED_MODELS "false")
+CUSTOM_PROMPT=$(plugin_read_config CUSTOM_PROMPT "")
 
-if [ "${HOSTED_MODELS}" = "true" ]; then
-  API_KEY="${BUILDKITE_AGENT_ACCESS_TOKEN:-}"
-else
-  API_KEY=$(plugin_read_config API_KEY "")
+# Get Buildkite API token from plugin config or environment
+BUILDKITE_API_TOKEN=$(plugin_read_config API_TOKEN "${BUILDKITE_API_TOKEN:-}")
+
+API_KEY="${BUILDKITE_AGENT_ACCESS_TOKEN:-}"
+if [ -z "${API_KEY}" ]; then
+  echo "Error: BUILDKITE_AGENT_ACCESS_TOKEN not available" >&2
+  exit 1
+fi
+# Check if build has any failures
+# First check current step
+EXIT_STATUS="${BUILDKITE_COMMAND_EXIT_STATUS:-0}"
+SOFT_FAILED="${SOFT_FAIL:-0}"
+CURRENT_STEP_FAILED=false
+
+if [ "${EXIT_STATUS}" -ne 0 ] || [ "${SOFT_FAILED}" -ne 0 ]; then
+  CURRENT_STEP_FAILED=true
 fi
 
-# Trim any whitespace that might be causing issues
-API_KEY=$(echo "$API_KEY" | tr -d '[:space:]')
+# Then check if any other jobs in the build have failed (if API token available)
+BUILD_HAS_FAILURES=false
+if [ -n "${BUILDKITE_API_TOKEN}" ]; then
+  if check_build_has_failures "${BUILDKITE_API_TOKEN}"; then
+    BUILD_HAS_FAILURES=true
+  fi
+fi
 
-# If API_KEY is still not set, this means it wasn't provided directly or via the environment hook
-if [ -z "${API_KEY}" ]; then
-  echo "❌ Error: api_key is required for Claude Code plugin"
+# Only analyze if there are failures (current step or other jobs)
+if [ "${CURRENT_STEP_FAILED}" = false ] && [ "${BUILD_HAS_FAILURES}" = false ]; then
+  # No failures detected - skip analysis
+  echo "No failures detected, skipping analysis"
+  exit 0
+fi
+echo "--- Analyzing build failure"
+
+# Get logs
+if [ -n "${BUILDKITE_API_TOKEN}" ]; then
+  echo "Fetching build logs from Buildkite API..."
+  LOG_FILE=$(fetch_build_logs "${BUILDKITE_API_TOKEN}" "1000" "step")
+else
+  echo "Warning: No BUILDKITE_API_TOKEN provided, using fallback logs" >&2
+  LOG_FILE=$(fetch_build_logs "" "1000" "step")
+fi
+
+if [ ! -f "${LOG_FILE}" ]; then
+  echo "Error: Could not retrieve logs" >&2
   exit 1
 fi
 
-# Plugin configuration is loaded
-MODEL=$(plugin_read_config MODEL "claude-3-7-sonnet-20250219")
-TRIGGER=$(plugin_read_config TRIGGER "on-failure")
-ANALYSIS_LEVEL=$(plugin_read_config ANALYSIS_LEVEL "step")
-MAX_LOG_LINES=$(plugin_read_config MAX_LOG_LINES "1000")
-CUSTOM_PROMPT=$(plugin_read_config CUSTOM_PROMPT "")
-TIMEOUT=$(plugin_read_config TIMEOUT "60")
-ANNOTATE=$(plugin_read_config ANNOTATE "true")
-AGENT_FILE=$(plugin_read_config AGENT_FILE "false")
-COMPARE_BUILDS=$(plugin_read_config COMPARE_BUILDS "false")
-COMPARISON_RANGE=$(plugin_read_config COMPARISON_RANGE "5")
+LOGS=$(cat "${LOG_FILE}")
 
-# API key validation already done above - no need to check again
+# Build prompt
+PROMPT="You are analyzing a failed Buildkite job.
 
-# Source validation functions
-# shellcheck disable=SC1091
-. "$DIR/../lib/validation.bash"
+Job: ${BUILDKITE_LABEL:-Unknown}
+Command: ${BUILDKITE_COMMAND:-Unknown}
+Exit Status: ${EXIT_STATUS}
+Soft Failed: ${SOFT_FAILED}
 
-# Validate required tools
-validate_tools || exit 1
+Logs:
+\`\`\`
+${LOGS}
+\`\`\`
+"
 
-# Validate configuration
-validate_configuration "${API_KEY}" "${MODEL}" "${TRIGGER}" "${ANALYSIS_LEVEL}" "${COMPARE_BUILDS}" "$(plugin_read_config BUILDKITE_API_TOKEN "")" "${HOSTED_MODELS}" || exit 1
+if [ -n "${CUSTOM_PROMPT}" ]; then
+  PROMPT="${PROMPT}
 
-echo "--- :robot_face: Claude Code Plugin (Post-Command)"
-echo "Model: ${MODEL}"
-echo "Trigger: ${TRIGGER}"
-echo "Analysis Level: ${ANALYSIS_LEVEL}"
-echo "Max log lines: ${MAX_LOG_LINES}"
-[ "${COMPARE_BUILDS}" = "true" ] && echo "Build Comparison: ENABLED (last ${COMPARISON_RANGE} builds)" || echo "Build Comparison: disabled"
-
-# Get the command exit status from Buildkite
-COMMAND_EXIT_STATUS="${BUILDKITE_COMMAND_EXIT_STATUS:-0}"
-
-echo "Command completed with exit status: ${COMMAND_EXIT_STATUS}"
-
-# Add a progress indicator for better UX
-echo "--- :gear: Preparing Claude analysis"
-
-# Check if we should trigger Claude analysis
-if should_trigger_analysis "${TRIGGER}" "${COMMAND_EXIT_STATUS}"; then
-  echo "--- :mag: Triggering Claude analysis"
-
-  # Perform analysis (disable exit on error temporarily)
-  set +e
-  ANALYSIS=$(analyze_build_failure "${API_KEY}" "${MODEL}" "${MAX_LOG_LINES}" "${CUSTOM_PROMPT}" "${TIMEOUT}" "${AGENT_FILE}" "${ANALYSIS_LEVEL}" "${COMPARE_BUILDS}" "${COMPARISON_RANGE}")
-  ANALYSIS_EXIT_CODE=$?
-  set -e
-
-  if [ ${ANALYSIS_EXIT_CODE} -eq 0 ]; then
-    echo "--- :white_check_mark: Analysis completed"
-
-    # Check if analysis was successful
-    if [ -n "${ANALYSIS}" ] && [[ ! "${ANALYSIS}" =~ ^Error: ]]; then
-      # Create annotation if enabled
-      if [ "${ANNOTATE}" = "true" ]; then
-        annotation_style="info"
-        annotation_title="Claude Build Analysis"
-
-        # Change style based on build status
-        if [ "${COMMAND_EXIT_STATUS}" -ne 0 ]; then
-          annotation_style="error"
-          if [ "${ANALYSIS_LEVEL}" = "build" ]; then
-            annotation_title="Claude Build Failure Analysis"
-          else
-            annotation_title="Claude Step Failure Analysis"
-          fi
-        else
-          if [ "${ANALYSIS_LEVEL}" = "build" ]; then
-            annotation_title="Claude Build Analysis"
-          else
-            annotation_title="Claude Step Analysis"
-          fi
-        fi
-
-        # Create a temp file for the annotation
-        annotation_file="/tmp/claude_success_${BUILDKITE_BUILD_ID}.md"
-
-        # Write the formatted annotation to the file
-        cat > "${annotation_file}" << ANNOTATION
-## ${annotation_title}
-
-### 📊 Summary
-
-**Pipeline:** ${BUILDKITE_PIPELINE_SLUG:-Unknown} | **Build:** [#${BUILDKITE_BUILD_NUMBER:-Unknown}](${BUILDKITE_BUILD_URL:-#}) | **Status:** $([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "❌ Failed (${BUILDKITE_COMMAND_EXIT_STATUS})" || echo "✅ Passed")
-
----
-
-### 📋 $([ "${ANALYSIS_LEVEL}" = "build" ] && echo "Build" || echo "Step") Information
-
-$([ "${ANALYSIS_LEVEL}" = "step" ] && echo "**Step:** ${BUILDKITE_LABEL:-Unknown}  ")
-$([ "${ANALYSIS_LEVEL}" = "step" ] && echo "**Command:** \`${BUILDKITE_COMMAND:-Unknown}\`  ")
-**Branch:** ${BUILDKITE_BRANCH:-Unknown}
-**Commit:** \`${BUILDKITE_COMMIT:-Unknown}\`
-$([ "${COMPARE_BUILDS}" = "true" ] && echo "**Historical Comparison:** Analyzing last ${COMPARISON_RANGE} builds  ")
-
----
-
-### 🤖 AI Analysis
-
-${ANALYSIS}
-
----
-
-<sub>Generated by Claude AI at $(date)</sub>
-ANNOTATION
-
-        # Use the file for annotation
-        formatted_analysis="${annotation_file}"
-
-        create_annotation "${annotation_title}" "${formatted_analysis}" "${annotation_style}"
-        echo "--- :brain: Claude Analysis Complete (See Annotation)"
-      else
-        echo "--- :brain: Claude Analysis Complete"
-      fi
-    else
-      echo "--- :warning: Claude analysis failed"
-      if [ "${ANNOTATE}" = "true" ]; then
-        # Create a temp file for the error annotation
-        error_file="/tmp/claude_error_${BUILDKITE_BUILD_ID}.md"
-
-        # Write the formatted error annotation to the file
-        cat > "${error_file}" << ERROR
-## ⚠️ Claude Analysis Failed
-
-**Error:** ${ANALYSIS}
-
----
-
-### 🔍 Troubleshooting Information
-
-**Current Configuration:**
-- Model: ${MODEL}
-- Trigger: ${TRIGGER}
-- Analysis Level: ${ANALYSIS_LEVEL}
-$([ "${COMPARE_BUILDS}" = "true" ] && echo "- Historical Comparison: Last ${COMPARISON_RANGE} builds")
-
-**Common Causes:**
-- Invalid or missing API key
-- Network connectivity issues
-- API rate limits exceeded
-- Service temporarily unavailable
-
-**Resolution Steps:**
-1. Verify your Anthropic API key is correctly configured
-2. Check network connectivity to \`api.anthropic.com\`
-3. Ensure the Buildkite agent has internet access
-4. Visit [status.anthropic.com](https://status.anthropic.com/) to check service status
-
----
-
-<sub>Generated at $(date)</sub>
-ERROR
-        error_annotation="${error_file}"
-        create_annotation "Claude Analysis Failed" "${error_annotation}" "warning"
-      fi
-    fi
-  fi
-else
-  echo "--- :zzz: Skipping Claude analysis (trigger: ${TRIGGER}, exit status: ${COMMAND_EXIT_STATUS})"
+${CUSTOM_PROMPT}
+"
 fi
 
-true
+PROMPT="${PROMPT}
+
+Identify the root cause and provide specific steps to fix it. Be concise."
+
+# Call API
+RESPONSE_FILE="/tmp/claude_response_${BUILDKITE_BUILD_ID}.json"
+PAYLOAD_FILE="/tmp/claude_payload_${BUILDKITE_BUILD_ID}.json"
+
+echo "${PROMPT}" > "/tmp/claude_prompt_${BUILDKITE_BUILD_ID}.txt"
+
+jq -n \
+  --arg model "claude-3-7-sonnet-20250219" \
+  --rawfile prompt "/tmp/claude_prompt_${BUILDKITE_BUILD_ID}.txt" \
+  '{
+    model: $model,
+    max_tokens: 2000,
+    messages: [{
+      role: "user",
+      content: $prompt
+    }]
+  }' > "${PAYLOAD_FILE}"
+
+HTTP_CODE=$(curl -s -w "%{http_code}" \
+  --max-time 60 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${API_KEY}" \
+  -d "@${PAYLOAD_FILE}" \
+  "https://agent.buildkite.com/v3/ai/anthropic/v1/messages" \
+  -o "${RESPONSE_FILE}")
+
+if [ "${HTTP_CODE}" -ne 200 ]; then
+  echo "Error: API call failed with HTTP ${HTTP_CODE}" >&2
+  exit 1
+fi
+
+# Extract response
+ANALYSIS=$(jq -r '.content[0].text // empty' "${RESPONSE_FILE}" 2>/dev/null)
+
+if [ -z "${ANALYSIS}" ]; then
+  echo "Error: Could not parse response" >&2
+  exit 1
+fi
+
+# Create annotation
+ANNOTATION_FILE="/tmp/claude_annotation_${BUILDKITE_BUILD_ID}.md"
+cat > "${ANNOTATION_FILE}" << EOF
+## Build Failure Analysis
+
+**Pipeline:** ${BUILDKITE_PIPELINE_SLUG} | **Build:** [#${BUILDKITE_BUILD_NUMBER}](${BUILDKITE_BUILD_URL}) | **Step:** ${BUILDKITE_LABEL}
+
+${ANALYSIS}
+EOF
+
+buildkite-agent annotate \
+  --style "error" \
+  --context "claude-analysis-${BUILDKITE_BUILD_ID}" \
+  < "${ANNOTATION_FILE}"
+
 exit 0
