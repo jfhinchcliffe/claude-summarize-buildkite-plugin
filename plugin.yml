@@ -7,11 +7,11 @@ requirements:
   - jq
 configuration:
   properties:
+    api_key:
+      type: string
+      description: Buildkite API token with read_builds scope
     custom_prompt:
       type: string
-      description: Additional context to include in the analysis
-    api_token:
-      type: string
-      description: Buildkite API token with read_builds scope (can also use BUILDKITE_API_TOKEN env var)
+      description: Additional context for the AI analysis
   required: []
   additionalProperties: false

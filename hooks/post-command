@@ -1,142 +1,130 @@
 #!/bin/bash
-set -euoeuo pipefail
+set -euo pipefail
 
 DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 
 # shellcheck source=lib/plugin.bash
 . "$DIR/../lib/plugin.bash"
-# shellcheck source=lib/logs.bash
-. "$DIR/../lib/logs.bash"
 
+# Get configuration
+API_KEY=$(plugin_read_config API_KEY "${BUILDKITE_API_TOKEN:-}")
 CUSTOM_PROMPT=$(plugin_read_config CUSTOM_PROMPT "")
 
-# Get Buildkite API token from plugin config or environment
-BUILDKITE_API_TOKEN=$(plugin_read_config API_TOKEN "${BUILDKITE_API_TOKEN:-}")
-
-API_KEY="${BUILDKITE_AGENT_ACCESS_TOKEN:-}"
+# Validate API key
 if [ -z "${API_KEY}" ]; then
-  echo "Error: BUILDKITE_AGENT_ACCESS_TOKEN not available" >&2
+  echo "ERROR: BUILDKITE_API_TOKEN not configured" >&2
   exit 1
 fi
-# Check if build has any failures
-# First check current step
-EXIT_STATUS="${BUILDKITE_COMMAND_EXIT_STATUS:-0}"
-SOFT_FAILED="${SOFT_FAIL:-0}"
-CURRENT_STEP_FAILED=false
 
-if [ "${EXIT_STATUS}" -ne 0 ] || [ "${SOFT_FAILED}" -ne 0 ]; then
-  CURRENT_STEP_FAILED=true
+# Validate agent token
+if [ -z "${BUILDKITE_AGENT_ACCESS_TOKEN:-}" ]; then
+  echo "ERROR: BUILDKITE_AGENT_ACCESS_TOKEN not available" >&2
+  exit 1
 fi
 
-# Then check if any other jobs in the build have failed (if API token available)
-BUILD_HAS_FAILURES=false
-if [ -n "${BUILDKITE_API_TOKEN}" ]; then
-  if check_build_has_failures "${BUILDKITE_API_TOKEN}"; then
-    BUILD_HAS_FAILURES=true
-  fi
+# Use buildkite.localhost for local testing, otherwise production
+API_BASE_URL="${BUILDKITE_API_BASE_URL:-https://api.buildkite.com/v2}"
+
+echo "--- Checking for failures"
+
+# Fetch build status
+BUILD_JSON=$(curl -sf \
+  -H "Authorization: Bearer ${API_KEY}" \
+  "${API_BASE_URL}/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}")
+
+if [ $? -ne 0 ]; then
+  echo "ERROR: Failed to fetch build status" >&2
+  exit 1
 fi
 
-# Only analyze if there are failures (current step or other jobs)
-if [ "${CURRENT_STEP_FAILED}" = false ] && [ "${BUILD_HAS_FAILURES}" = false ]; then
-  # No failures detected - skip analysis
-  echo "No failures detected, skipping analysis"
+# Extract failed jobs
+echo "${BUILD_JSON}" | jq -r '.jobs[] | select(.type == "script" and .state == "failed") | "\(.id)|\(.name)"' > /tmp/failed_jobs_${BUILDKITE_BUILD_ID}.txt
+
+FAILED_COUNT=$(wc -l < /tmp/failed_jobs_${BUILDKITE_BUILD_ID}.txt | tr -d ' ')
+echo "Found ${FAILED_COUNT} failed job(s)"
+
+if [ "${FAILED_COUNT}" -eq 0 ]; then
+  echo "No failures to analyze"
   exit 0
 fi
-echo "--- Analyzing build failure"
 
-# Get logs
-if [ -n "${BUILDKITE_API_TOKEN}" ]; then
-  echo "Fetching build logs from Buildkite API..."
-  LOG_FILE=$(fetch_build_logs "${BUILDKITE_API_TOKEN}" "1000" "step")
-else
-  echo "Warning: No BUILDKITE_API_TOKEN provided, using fallback logs" >&2
-  LOG_FILE=$(fetch_build_logs "" "1000" "step")
-fi
+echo "--- Fetching logs for failed jobs"
 
-if [ ! -f "${LOG_FILE}" ]; then
-  echo "Error: Could not retrieve logs" >&2
-  exit 1
-fi
+> /tmp/failed_logs_${BUILDKITE_BUILD_ID}.txt
+while IFS='|' read -r job_id job_name; do
+  [ -z "${job_id}" ] && continue
+  echo "Fetching logs for: ${job_name}"
+  echo "=== Failed Job: ${job_name} ===" >> /tmp/failed_logs_${BUILDKITE_BUILD_ID}.txt
+  echo "" >> /tmp/failed_logs_${BUILDKITE_BUILD_ID}.txt
 
-LOGS=$(cat "${LOG_FILE}")
+  curl -sf \
+    -H "Authorization: Bearer ${API_KEY}" \
+    "${API_BASE_URL}/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}/jobs/${job_id}/log" \
+    >> /tmp/failed_logs_${BUILDKITE_BUILD_ID}.txt || echo "[Could not fetch logs]" >> /tmp/failed_logs_${BUILDKITE_BUILD_ID}.txt
 
-# Build prompt
-PROMPT="You are analyzing a failed Buildkite job.
+  echo "" >> /tmp/failed_logs_${BUILDKITE_BUILD_ID}.txt
+done < /tmp/failed_jobs_${BUILDKITE_BUILD_ID}.txt
 
-Job: ${BUILDKITE_LABEL:-Unknown}
-Command: ${BUILDKITE_COMMAND:-Unknown}
-Exit Status: ${EXIT_STATUS}
-Soft Failed: ${SOFT_FAILED}
+echo "--- Analyzing failures with Claude"
 
-Logs:
-\`\`\`
-${LOGS}
-\`\`\`
-"
+# Build prompt - use simple concatenation to avoid issues
+PROMPT="For each failed Buildkite job, provide: Job name, Root cause (one sentence), Fix (bullet points). Be concise and actionable."
+PROMPT="${PROMPT} Failed Jobs: "
 
 if [ -n "${CUSTOM_PROMPT}" ]; then
-  PROMPT="${PROMPT}
-
-${CUSTOM_PROMPT}
-"
+  PROMPT="${PROMPT} Additional context: ${CUSTOM_PROMPT}"
 fi
 
-PROMPT="${PROMPT}
+# Append logs to prompt
+PROMPT="${PROMPT}$(cat /tmp/failed_logs_${BUILDKITE_BUILD_ID}.txt)"
 
-Identify the root cause and provide specific steps to fix it. Be concise."
+# Create payload using jq with stdin to avoid ARG_MAX issues
+printf '%s' "${PROMPT}" | jq -Rs \
+  --arg model "claude-sonnet-4-5" \
+  '{model: $model, max_tokens: 2000, messages: [{role: "user", content: .}]}' \
+  > /tmp/payload_${BUILDKITE_BUILD_ID}.json
 
-# Call API
-RESPONSE_FILE="/tmp/claude_response_${BUILDKITE_BUILD_ID}.json"
-PAYLOAD_FILE="/tmp/claude_payload_${BUILDKITE_BUILD_ID}.json"
-
-echo "${PROMPT}" > "/tmp/claude_prompt_${BUILDKITE_BUILD_ID}.txt"
-
-jq -n \
-  --arg model "claude-3-7-sonnet-20250219" \
-  --rawfile prompt "/tmp/claude_prompt_${BUILDKITE_BUILD_ID}.txt" \
-  '{
-    model: $model,
-    max_tokens: 2000,
-    messages: [{
-      role: "user",
-      content: $prompt
-    }]
-  }' > "${PAYLOAD_FILE}"
-
-HTTP_CODE=$(curl -s -w "%{http_code}" \
-  --max-time 60 \
+# Call Claude via Buildkite hosted endpoint
+RESPONSE=$(curl -s -X POST "${BUILDKITE_AGENT_ENDPOINT}/ai/anthropic/v1/messages" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ${API_KEY}" \
-  -d "@${PAYLOAD_FILE}" \
-  "https://agent.buildkite.com/v3/ai/anthropic/v1/messages" \
-  -o "${RESPONSE_FILE}")
+  -H "x-api-key: ${BUILDKITE_AGENT_ACCESS_TOKEN}" \
+  -H "anthropic-version: 2023-06-01" \
+  -d @/tmp/payload_${BUILDKITE_BUILD_ID}.json)
 
-if [ "${HTTP_CODE}" -ne 200 ]; then
-  echo "Error: API call failed with HTTP ${HTTP_CODE}" >&2
+if [ $? -ne 0 ]; then
+  echo "ERROR: Failed to call Claude API" >&2
   exit 1
 fi
 
-# Extract response
-ANALYSIS=$(jq -r '.content[0].text // empty' "${RESPONSE_FILE}" 2>/dev/null)
+# Extract analysis
+ANALYSIS=$(echo "${RESPONSE}" | jq -r '.content[0].text // empty')
 
 if [ -z "${ANALYSIS}" ]; then
-  echo "Error: Could not parse response" >&2
+  echo "ERROR: No analysis from Claude" >&2
+  echo "Response: ${RESPONSE}" >&2
   exit 1
 fi
 
+echo "--- Creating annotation"
+
 # Create annotation
-ANNOTATION_FILE="/tmp/claude_annotation_${BUILDKITE_BUILD_ID}.md"
-cat > "${ANNOTATION_FILE}" << EOF
+cat > /tmp/annotation_${BUILDKITE_BUILD_ID}.md << EOF
 ## Build Failure Analysis
 
-**Pipeline:** ${BUILDKITE_PIPELINE_SLUG} | **Build:** [#${BUILDKITE_BUILD_NUMBER}](${BUILDKITE_BUILD_URL}) | **Step:** ${BUILDKITE_LABEL}
+**Build:** [${BUILDKITE_PIPELINE_SLUG} #${BUILDKITE_BUILD_NUMBER}](${BUILDKITE_BUILD_URL})
 
 ${ANALYSIS}
 EOF
 
 buildkite-agent annotate \
   --style "error" \
-  --context "claude-analysis-${BUILDKITE_BUILD_ID}" \
-  < "${ANNOTATION_FILE}"
+  --context "claude-analysis" \
+  < /tmp/annotation_${BUILDKITE_BUILD_ID}.md
 
-exit 0
+# Cleanup
+rm -f /tmp/failed_jobs_${BUILDKITE_BUILD_ID}.txt
+rm -f /tmp/failed_logs_${BUILDKITE_BUILD_ID}.txt
+rm -f /tmp/payload_${BUILDKITE_BUILD_ID}.json
+rm -f /tmp/annotation_${BUILDKITE_BUILD_ID}.md
+
+echo "Analysis complete"
